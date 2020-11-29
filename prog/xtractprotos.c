@@ -84,10 +84,14 @@
  *   Cygwin needs to prevent it from appending ".exe" to the filename.)
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #include "allheaders.h"
 
-static const l_int32  L_BUFSIZE = 512;  /* hardcoded below in sscanf() */
+#define L_BUFSIZE 512  /* hardcoded below in sscanf() */
 static const char *version = "1.5";
 
 
@@ -95,17 +99,15 @@ int main(int    argc,
          char **argv)
 {
 char        *filein, *str, *tempfile, *prestring, *outprotos, *protostr;
-const char  *spacestr = " ";
 char         buf[L_BUFSIZE];
-l_uint8     *allheaders;
 l_int32      i, maxindex, in_line, nflags, protos_added, firstfile, len, ret;
 size_t       nbytes;
 L_BYTEA     *ba, *ba2;
-SARRAY      *sa, *safirst;
+SARRAY      *sa;
 static char  mainName[] = "xtractprotos";
 
     if (argc == 1) {
-        fprintf(stderr,
+        lept_stderr(
                 "xtractprotos [-prestring=<string>] [-protos=<where>] "
                 "[list of C files]\n"
                 "where the prestring is prepended to each prototype, and \n"
@@ -129,7 +131,7 @@ static char  mainName[] = "xtractprotos";
                 nflags++;
                 ret = sscanf(argv[i] + 1, "prestring=%490s", buf);
                 if (ret != 1) {
-                    fprintf(stderr, "parse failure for prestring\n");
+                    lept_stderr("parse failure for prestring\n");
                     return 1;
                 }
                 if ((len = strlen(buf)) > L_BUFSIZE - 3) {
@@ -143,7 +145,7 @@ static char  mainName[] = "xtractprotos";
                 nflags++;
                 ret = sscanf(argv[i] + 1, "protos=%490s", buf);
                 if (ret != 1) {
-                    fprintf(stderr, "parse failure for protos\n");
+                    lept_stderr("parse failure for protos\n");
                     return 1;
                 }
                 outprotos = stringNew(buf);
@@ -154,7 +156,7 @@ static char  mainName[] = "xtractprotos";
     }
 
     if (argc - nflags < 2) {
-        fprintf(stderr, "no files specified!\n");
+        lept_stderr("no files specified!\n");
         return 1;
     }
 
@@ -184,7 +186,7 @@ static char  mainName[] = "xtractprotos";
     firstfile = 1 + nflags;
     protos_added = FALSE;
     if ((tempfile = l_makeTempFilename()) == NULL) {
-        fprintf(stderr, "failure to make a writeable temp file\n");
+        lept_stderr("failure to make a writeable temp file\n");
         return 1;
     }
     for (i = firstfile; i < argc; i++) {
@@ -196,12 +198,12 @@ static char  mainName[] = "xtractprotos";
                  filein, tempfile);
         ret = system(buf);  /* cpp */
         if (ret) {
-            fprintf(stderr, "cpp failure for %s; continuing\n", filein);
+            lept_stderr("cpp failure for %s; continuing\n", filein);
             continue;
         }
 
         if ((str = parseForProtos(tempfile, prestring)) == NULL) {
-            fprintf(stderr, "parse failure for %s; continuing\n", filein);
+            lept_stderr("parse failure for %s; continuing\n", filein);
             continue;
         }
         if (strlen(str) > 1) {  /* strlen(str) == 1 is a file without protos */
@@ -231,14 +233,14 @@ static char  mainName[] = "xtractprotos";
     /*                       Generate the output                        */
     /* ---------------------------------------------------------------- */
     if (!outprotos) {  /* just write to stdout */
-        fprintf(stderr, "%s\n", protostr);
+        lept_stderr("%s\n", protostr);
         lept_free(protostr);
         return 0;
     }
 
         /* If no protos were found, do nothing further */
     if (!protos_added) {
-        fprintf(stderr, "No protos found\n");
+        lept_stderr("No protos found\n");
         lept_free(protostr);
         return 1;
     }

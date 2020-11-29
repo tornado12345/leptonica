@@ -33,10 +33,13 @@
  *   generate the recog/digits/digit*.comp.tif image mosaics.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "string.h"
 #include "allheaders.h"
 
-static const l_int32  n = 25;
 static const char *removeset = "4,7,9,21";
 
 void ProcessDigits(l_int32 i);
@@ -45,8 +48,6 @@ void PixaDisplayNumbered(PIXA *pixa, const char *rootname);
 l_int32 main(int    argc,
              char **argv)
 {
-l_int32  i;
-
     setLeptDebugOK(1);
     lept_mkdir("lept/digit");
     ProcessDigits(5);
@@ -133,16 +134,16 @@ PIXA      *pixa1, *pixa2, *pixa3;
         /* The number of templates is in the pix text string; check it. */
     pix2 = pixRead(buf);
     if (sscanf(pixGetText(pix2), "n = %d", &ns) != 1)
-        fprintf(stderr, "Failed to read the number of templates!\n");
+        lept_stderr("Failed to read the number of templates!\n");
     if (ns != nc)
-        fprintf(stderr, "(stored = %d) != (actual number = %d)\n", ns, nc);
+        lept_stderr("(stored = %d) != (actual number = %d)\n", ns, nc);
 
         /* Reconstruct the pixa of templates from the tiled compressed
          * image, and verify that the resulting pixa is the same.  */
     pixa3 = pixaMakeFromTiledPix(pix1, 20, 30, 0, 0, NULL);
     pixaEqual(pixa2, pixa3, 0, NULL, &same);
     if (!same)
-        fprintf(stderr, "Pixa are not the same!\n");
+        lept_stderr("Pixa are not the same!\n");
 
     pixDestroy(&pix1);
     pixDestroy(&pix2);

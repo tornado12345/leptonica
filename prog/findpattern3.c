@@ -38,6 +38,10 @@
  *    (2) We do the same with the word "Caltech".
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
     /* for pixDisplayHitMissSel() */
@@ -77,7 +81,7 @@ static char  mainName[] = "findpattern3";
         /* Use the Sel to find all instances in the page */
     startTimer();
     pixhmt = pixHMT(NULL, pixs, selhm);
-    fprintf(stderr, "Time to find patterns = %7.3f\n", stopTimer());
+    lept_stderr("Time to find patterns = %7.3f\n", stopTimer());
 
         /* Color each instance at full res */
     pixd1 = pixDisplayMatchedPattern(pixs, pixp, pixhmt, selhm->cx,
@@ -123,7 +127,7 @@ static char  mainName[] = "findpattern3";
         /* Use the Sel to find all instances in the page */
     startTimer();
     pixhmt = pixHMT(NULL, pixs, selhm);
-    fprintf(stderr, "Time to find word patterns = %7.3f\n", stopTimer());
+    lept_stderr("Time to find word patterns = %7.3f\n", stopTimer());
 
         /* Color each instance at full res */
     pixd1 = pixDisplayMatchedPattern(pixs, pixp, pixhmt, selhm->cx,

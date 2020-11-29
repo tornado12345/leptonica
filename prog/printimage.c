@@ -69,6 +69,10 @@
  *   ***************************************************************
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
 #define  USE_COMPRESSED    1
@@ -92,10 +96,9 @@ static char  mainName[] = "printimage";
             " Syntax:  printimage <filein> [printer, other lpr args]",
             mainName, 1);
     filein = argv[1];
-    if (argc > 2)
-        printer = argv[2];
+    printer = (argc > 2) ? argv[2] : NULL;
 
-    fprintf(stderr,
+    lept_stderr(
          "\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
          "   Warning: this program should only be used for testing,\n"
          "     and not in a production environment, because of a\n"

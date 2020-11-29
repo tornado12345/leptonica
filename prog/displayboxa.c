@@ -41,6 +41,10 @@
  *   width is 100.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
 int main(int    argc,
@@ -54,8 +58,8 @@ PIX         *pixd;
 static char  mainName[] = "displayboxa";
 
     if (argc != 6) {
-        fprintf(stderr, "Syntax error in displayboxa:\n"
-           "   displayboxa filein first last width fileout\n");
+        lept_stderr("Syntax error in displayboxa:\n"
+                    "   displayboxa filein first last width fileout\n");
          return 1;
     }
     filein = argv[1];

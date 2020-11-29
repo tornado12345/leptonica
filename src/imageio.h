@@ -111,6 +111,12 @@ enum {
     IFF_SPIX           = 19
 };
 
+/* Convenient macro for checking requested tiff output */
+#define  L_FORMAT_IS_TIFF(f)  ((f) == IFF_TIFF || (f) == IFF_TIFF_PACKBITS || \
+                               (f) == IFF_TIFF_RLE || (f) == IFF_TIFF_G3 || \
+                               (f) == IFF_TIFF_G4 || (f) == IFF_TIFF_LZW || \
+                               (f) == IFF_TIFF_ZIP || (f) == IFF_TIFF_JPEG)
+
 
 /* --------------------------------------------------------------- *
  *                         Format header ids                       *
@@ -129,9 +135,10 @@ enum {
  * --------------------------------------------------------------- */
 
 /*! Jpeg Hints */
+/* The default behavior is now to fail on data corruption. */
 enum {
-    L_JPEG_READ_LUMINANCE = 1,   /*!< only want luminance data; no chroma */
-    L_JPEG_FAIL_ON_BAD_DATA = 2  /*!< don't return possibly damaged pix */
+    L_JPEG_READ_LUMINANCE = 1,    /*!< only want luminance data; no chroma */
+    L_JPEG_CONTINUE_WITH_BAD_DATA = 2  /*!< return possibly damaged pix */
 };
 
 

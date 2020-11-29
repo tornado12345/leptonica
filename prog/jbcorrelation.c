@@ -42,6 +42,10 @@
  *               /tmp/lept/jb/result
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
     /* Choose one of these */
@@ -56,11 +60,6 @@
 #define   RENDER_DEBUG              1
 #define   DISPLAY_DIFFERENCE        1
 #define   DISPLAY_ALL_INSTANCES     0
-
-    /* For display output of all instances, sorted by class */
-#define   X_SPACING                10
-#define   Y_SPACING                15
-#define   MAX_OUTPUT_WIDTH         400
 
 static const char  rootname[] = "/tmp/lept/jb/result";
 
@@ -120,12 +119,12 @@ static char  mainName[] = "jbcorrelation";
     startTimer();
     classer = jbCorrelationInit(COMPONENTS, 0, 0, thresh, weight);
     jbAddPages(classer, safiles);
-    fprintf(stderr, "Time to generate classes: %6.3f sec\n", stopTimer());
+    lept_stderr("Time to generate classes: %6.3f sec\n", stopTimer());
 
         /* Save and write out the result */
     data = jbDataSave(classer);
     jbDataWrite(rootname, data);
-    fprintf(stderr, "Number of classes: %d\n", classer->nclass);
+    lept_stderr("Number of classes: %d\n", classer->nclass);
 
         /* Render the pages from the classifier data.
          * Use debugflag == FALSE to omit outlines of each component. */
@@ -134,12 +133,11 @@ static char  mainName[] = "jbcorrelation";
         /* Write the pages out */
     npages = pixaGetCount(pixa);
     if (npages != nfiles)
-        fprintf(stderr, "npages = %d, nfiles = %d, not equal!\n",
-                npages, nfiles);
+        lept_stderr("npages = %d, nfiles = %d, not equal!\n", npages, nfiles);
     for (i = 0; i < npages; i++) {
         pix = pixaGetPix(pixa, i, L_CLONE);
         snprintf(filename, BUF_SIZE, "%s.%03d", rootname, i);
-        fprintf(stderr, "filename: %s\n", filename);
+        lept_stderr("filename: %s\n", filename);
         pixWrite(filename, pix, IFF_PNG);
         pixDestroy(&pix);
     }
@@ -175,16 +173,16 @@ static char  mainName[] = "jbcorrelation";
         pixEqual(pix, newpix, &same);
         if (!same) {
             iofail = TRUE;
-            fprintf(stderr, "pix on page %d are unequal!\n", i);
+            lept_stderr("pix on page %d are unequal!\n", i);
         }
         pixDestroy(&pix);
         pixDestroy(&newpix);
 
     }
     if (iofail)
-        fprintf(stderr, "read/write for jbdata fails\n");
+        lept_stderr("read/write for jbdata fails\n");
     else
-        fprintf(stderr, "read/write for jbdata succeeds\n");
+        lept_stderr("read/write for jbdata succeeds\n");
     jbDataDestroy(&newdata);
     pixaDestroy(&newpixa);
     }
@@ -198,7 +196,7 @@ static char  mainName[] = "jbcorrelation";
     for (i = 0; i < npages; i++) {
         pix = pixaGetPix(pixadb, i, L_CLONE);
         snprintf(filename, BUF_SIZE, "%s.db.%04d", rootname, i);
-        fprintf(stderr, "filename: %s\n", filename);
+        lept_stderr("filename: %s\n", filename);
         pixWrite(filename, pix, IFF_PNG);
         pixDestroy(&pix);
     }
@@ -206,9 +204,9 @@ static char  mainName[] = "jbcorrelation";
 #endif  /* RENDER_DEBUG */
 
 #if  DISPLAY_ALL_INSTANCES
-        /* display all instances, organized by template */
-    pix = pixaaDisplayByPixa(classer->pixaa,
-                             X_SPACING, Y_SPACING, MAX_OUTPUT_WIDTH);
+        /* Display all instances, organized by template.
+         * The display programs have a lot of trouble with these. */
+    pix = pixaaDisplayByPixa(classer->pixaa, 5, 1.0, 10, 0, 0);
     pixWrite("/tmp/lept/jb/output_instances", pix, IFF_PNG);
     pixDestroy(&pix);
 #endif  /* DISPLAY_ALL_INSTANCES */

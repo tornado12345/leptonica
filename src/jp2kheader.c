@@ -42,6 +42,10 @@
  * </pre>
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #include <math.h>
 #include "allheaders.h"
@@ -83,10 +87,6 @@ FILE    *fp;
 
     PROCNAME("readHeaderJp2k");
 
-    if (pw) *pw = 0;
-    if (ph) *ph = 0;
-    if (pbps) *pbps = 0;
-    if (pspp) *pspp = 0;
     if (!filename)
         return ERROR_INT("filename not defined", procName, 1);
 
@@ -116,14 +116,10 @@ freadHeaderJp2k(FILE     *fp,
                 l_int32  *pspp)
 {
 l_uint8  buf[80];  /* just need the first 80 bytes */
-l_int32  nread;
+l_int32  nread, ret;
 
     PROCNAME("freadHeaderJp2k");
 
-    if (pw) *pw = 0;
-    if (ph) *ph = 0;
-    if (pbps) *pbps = 0;
-    if (pspp) *pspp = 0;
     if (!fp)
         return ERROR_INT("fp not defined", procName, 1);
 
@@ -132,9 +128,9 @@ l_int32  nread;
     if (nread != sizeof(buf))
         return ERROR_INT("read failure", procName, 1);
 
-    readHeaderMemJp2k(buf, sizeof(buf), pw, ph, pbps, pspp);
+    ret = readHeaderMemJp2k(buf, sizeof(buf), pw, ph, pbps, pspp);
     rewind(fp);
-    return 0;
+    return ret;
 }
 
 
@@ -208,12 +204,18 @@ l_uint8  ihdr[4] = {0x69, 0x68, 0x64, 0x72};  /* 'ihdr' */
     val = *((l_uint16 *)data + 2 * (windex + 2));
     spp = convertOnLittleEnd16(val);
     bps = *(data + 4 * (windex + 2) + 2) + 1;
+    if (w < 1 || h < 1)
+        return ERROR_INT("w and h must both be > 0", procName, 1);
     if (w > MAX_JP2K_WIDTH || h > MAX_JP2K_HEIGHT)
         return ERROR_INT("unrealistically large sizes", procName, 1);
+    if (spp != 1 && spp != 3 && spp != 4)
+        return ERROR_INT("spp must be in 1, 3 or 4", procName, 1);
+    if (bps != 8 && bps != 16)
+        return ERROR_INT("bps must be 8 or 16", procName, 1);
     if (pw) *pw = w;
     if (ph) *ph = h;
-    if (pbps) *pbps = bps;
     if (pspp) *pspp = spp;
+    if (pbps) *pbps = bps;
     return 0;
 }
 
@@ -272,6 +274,11 @@ l_float64  xres, yres, maxres;
         LEPT_FREE(data);
         return 1;
     }
+    if (nbytes < 80 || loc >= nbytes - 13) {
+        L_WARNING("image resolution found without enough space\n", procName);
+        LEPT_FREE(data);
+        return 1;
+    }
 
         /* Extract the fields and calculate the resolution in pixels/meter.
          * See section 1.5.3.7.1 of JPEG 2000 ISO/IEC 15444-1 spec.  */
@@ -283,6 +290,11 @@ l_float64  xres, yres, maxres;
     xnum = convertOnLittleEnd16(xnum);
     xdenom = data[loc + 11] << 8 | data[loc + 10];
     xdenom = convertOnLittleEnd16(xdenom);
+    if (ydenom == 0 || xdenom == 0) {
+        L_WARNING("bad data: ydenom or xdenom is 0\n", procName);
+        LEPT_FREE(data);
+        return 1;
+    }
     yexp = data[loc + 12];
     xexp = data[loc + 13];
     yres = ((l_float64)ynum / (l_float64)ydenom) * pow(10.0, (l_float64)yexp);

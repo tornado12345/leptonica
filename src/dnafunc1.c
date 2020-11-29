@@ -36,6 +36,9 @@
  *          NUMA        *l_dnaConvertToNuma()
  *          L_DNA       *numaConvertToDna()
  *
+ *      Conversion from pix data to dna
+ *          L_DNA       *pixConvertDataToDna()
+ *
  *      Set operations using aset (rbtree)
  *          L_DNA       *l_dnaUnionByAset()
  *          L_DNA       *l_dnaRemoveDupsByAset()
@@ -54,6 +57,10 @@
  * </pre>
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
 /*----------------------------------------------------------------------*
@@ -62,10 +69,10 @@
 /*!
  * \brief   l_dnaJoin()
  *
- * \param[in]    dad  dest dna; add to this one
- * \param[in]    das  [optional] source dna; add from this one
- * \param[in]    istart  starting index in das
- * \param[in]    iend  ending index in das; use -1 to cat all
+ * \param[in]    dad       dest dna; add to this one
+ * \param[in]    das       [optional] source dna; add from this one
+ * \param[in]    istart    starting index in das
+ * \param[in]    iend      ending index in das; use -1 to cat all
  * \return  0 if OK, 1 on error
  *
  * <pre>
@@ -200,6 +207,47 @@ L_DNA     *da;
     for (i = 0; i < n; i++) {
         numaGetFValue(na, i, &val);
         l_dnaAddNumber(da, val);
+    }
+    return da;
+}
+
+
+/*----------------------------------------------------------------------*
+ *                    Conversion from pix data to dna                   *
+ *----------------------------------------------------------------------*/
+/*!
+ * \brief   pixConvertDataToDna()
+ *
+ * \param[in]    pix      32 bpp RGB(A)
+ * \return  da, or NULL on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) This writes the RGBA pixel values into the dna, in row-major order.
+ * </pre>
+ */
+L_DNA *
+pixConvertDataToDna(PIX  *pix)
+{
+l_int32    i, j, w, h, wpl;
+l_uint32  *data, *line;
+L_DNA     *da;
+
+    PROCNAME("pixConvertDataToDna");
+
+    if (!pix)
+        return (L_DNA *)ERROR_PTR("pix not defined", procName, NULL);
+    if (pixGetDepth(pix) != 32)
+        return (L_DNA *)ERROR_PTR("pix not 32 bpp", procName, NULL);
+
+    pixGetDimensions(pix, &w, &h, NULL);
+    data = pixGetData(pix);
+    wpl = pixGetWpl(pix);
+    da = l_dnaCreate(w * h);
+    for (i = 0; i < h; i++) {
+        line = data + i * wpl;
+        for (j = 0; j < w; j++)
+            l_dnaAddNumber(da, (l_float64)line[j]);
     }
     return da;
 }
@@ -343,7 +391,7 @@ L_DNA     *da_small, *da_big, *dad;
 /*!
  * \brief   l_asetCreateFromDna()
  *
- * \param[in]    da source dna
+ * \param[in]    da    source dna
  * \return  set using the doubles in %da as keys
  */
 L_ASET *
@@ -377,7 +425,7 @@ RB_TYPE    key;
 /*!
  * \brief   l_dnaDiffAdjValues()
  *
- * \param[in]    das input l_dna
+ * \param[in]    das    input l_dna
  * \return  dad of difference values val[i+1] - val[i],
  *                   or NULL on error
  */

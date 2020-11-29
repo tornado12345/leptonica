@@ -42,6 +42,10 @@
  *      the library gives opj_start_compress() encoding errors!
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <math.h>
 #include "allheaders.h"
 
@@ -60,16 +64,16 @@ int main(int    argc,
 L_REGPARAMS  *rp;
 
 #if !HAVE_LIBJP2K
-    fprintf(stderr, "jp2kio is not enabled\n"
-            "libopenjp2 is required for jp2kio_reg\n"
-            "See environ.h: #define HAVE_LIBJP2K\n"
-            "See prog/Makefile: link in -lopenjp2\n\n");
+    lept_stderr("jp2kio is not enabled\n"
+                "libopenjp2 is required for jp2kio_reg\n"
+                "See environ.h: #define HAVE_LIBJP2K\n"
+                "See prog/Makefile: link in -lopenjp2\n\n");
     return 0;
 #endif  /* abort */
 
         /* This test uses libjpeg */
 #if !HAVE_LIBJPEG
-    fprintf(stderr, "libjpeg is required for jp2kio_reg\n\n");
+    lept_stderr("libjpeg is required for jp2kio_reg\n\n");
     return 0;
 #endif  /* abort */
 

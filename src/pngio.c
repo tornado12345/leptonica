@@ -118,7 +118,7 @@
  */
 
 #ifdef  HAVE_CONFIG_H
-#include "config_auto.h"
+#include <config_auto.h>
 #endif  /* HAVE_CONFIG_H */
 
 #include <string.h>
@@ -185,15 +185,13 @@ PIX *
 pixReadStreamPng(FILE  *fp)
 {
 l_uint8      byte;
-l_int32      rval, gval, bval;
-l_int32      i, j, k, index, ncolors, bitval;
+l_int32      i, j, k, index, ncolors, bitval, rval, gval, bval, valid;
 l_int32      wpl, d, spp, cindex, tRNS;
 l_uint32     png_transforms;
 l_uint32    *data, *line, *ppixel;
 int          num_palette, num_text, num_trans;
 png_byte     bit_depth, color_type, channels;
-png_uint_32  w, h, rowbytes;
-png_uint_32  xres, yres;
+png_uint_32  w, h, rowbytes, xres, yres;
 png_bytep    rowptr, trans;
 png_bytep   *row_pointers;
 png_structp  png_ptr;
@@ -233,10 +231,11 @@ PIXCMAP     *cmap;
     png_init_io(png_ptr, fp);
 
         /* ---------------------------------------------------------- *
-         *  Set the transforms flags.  Whatever happens here,
-         *  NEVER invert 1 bpp using PNG_TRANSFORM_INVERT_MONO.
-         *  Also, do not use PNG_TRANSFORM_EXPAND, which would
-         *  expand all images with bpp < 8 to 8 bpp.
+         *  - Set the transforms flags.  Whatever happens here,
+         *    NEVER invert 1 bpp using PNG_TRANSFORM_INVERT_MONO.
+         *  - Do not use PNG_TRANSFORM_EXPAND, which would
+         *    expand all images with bpp < 8 to 8 bpp.
+         *  - Strip 16 --> 8 if reading 16-bit gray+alpha
          * ---------------------------------------------------------- */
         /* To strip 16 --> 8 bit depth, use PNG_TRANSFORM_STRIP_16 */
     if (var_PNG_STRIP_16_TO_8 == 1) {  /* our default */
@@ -266,10 +265,11 @@ PIXCMAP     *cmap;
     }
 
         /* Remove if/when this is implemented for all bit_depths */
-    if (spp == 3 && bit_depth != 8) {
-        fprintf(stderr, "Help: spp = 3 and depth = %d != 8\n!!", bit_depth);
+    if (spp != 1 && bit_depth != 8) {
+        L_ERROR("spp = %d and bps = %d != 8\n"
+                "turn on 16 --> 8 stripping\n", procName, spp, bit_depth);
         png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
-        return (PIX *)ERROR_PTR("not implemented for this depth",
+        return (PIX *)ERROR_PTR("not implemented for this image",
             procName, NULL);
     }
 
@@ -294,8 +294,11 @@ PIXCMAP     *cmap;
     pixSetInputFormat(pix, IFF_PNG);
     wpl = pixGetWpl(pix);
     data = pixGetData(pix);
-    pixSetColormap(pix, cmap);
     pixSetSpp(pix, spp);
+    if (pixSetColormap(pix, cmap)) {
+        pixDestroy(&pix);
+        return (PIX *)ERROR_PTR("invalid colormap", procName, NULL);
+    }
 
     if (spp == 1 && !tRNS) {  /* copy straight from buffer to pix */
         for (i = 0; i < h; i++) {
@@ -328,7 +331,9 @@ PIXCMAP     *cmap;
                 SET_DATA_BYTE(ppixel, COLOR_RED, rowptr[k++]);
                 SET_DATA_BYTE(ppixel, COLOR_GREEN, rowptr[k++]);
                 SET_DATA_BYTE(ppixel, COLOR_BLUE, rowptr[k++]);
-                if (spp == 4)
+                if (spp == 3)  /* set to opaque; some readers are buggy */
+                    SET_DATA_BYTE(ppixel, L_ALPHA_CHANNEL, 255);
+                else  /* spp == 4 */
                     SET_DATA_BYTE(ppixel, L_ALPHA_CHANNEL, rowptr[k++]);
                 ppixel++;
             }
@@ -373,16 +378,16 @@ PIXCMAP     *cmap;
             pixSetSpp(pix, 4);
 
 #if DEBUG_READ
-            fprintf(stderr, "ncolors = %d, num_trans = %d\n",
-                    ncolors, num_trans);
+            lept_stderr("ncolors = %d, num_trans = %d\n",
+                        ncolors, num_trans);
             for (i = 0; i < ncolors; i++) {
                 pixcmapGetColor(cmap, i, &rval, &gval, &bval);
                 if (i < num_trans) {
-                    fprintf(stderr, "(r,g,b,a) = (%d,%d,%d,%d)\n",
-                            rval, gval, bval, trans[i]);
+                    lept_stderr("(r,g,b,a) = (%d,%d,%d,%d)\n",
+                                rval, gval, bval, trans[i]);
                 } else {
-                    fprintf(stderr, "(r,g,b,a) = (%d,%d,%d,<<255>>)\n",
-                            rval, gval, bval);
+                    lept_stderr("(r,g,b,a) = (%d,%d,%d,<<255>>)\n",
+                                rval, gval, bval);
                 }
             }
 #endif  /* DEBUG_READ */
@@ -438,8 +443,7 @@ PIXCMAP     *cmap;
 #if  DEBUG_READ
     if (cmap) {
         for (i = 0; i < 16; i++) {
-            fprintf(stderr, "[%d] = %d\n", i,
-                   ((l_uint8 *)(cmap->array))[i]);
+            lept_stderr("[%d] = %d\n", i, ((l_uint8 *)(cmap->array))[i]);
         }
     }
 #endif  /* DEBUG_READ */
@@ -488,6 +492,17 @@ PIXCMAP     *cmap;
         pixSetText(pix, text_ptr->text);
 
     png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
+
+        /* Final validity check on the colormap */
+    if ((cmap = pixGetColormap(pix)) != NULL) {
+        pixcmapIsValid(cmap, pix, &valid);
+        if (!valid) {
+            pixDestroy(&pix);
+            return (PIX *)ERROR_PTR("colormap is not valid", procName, NULL);
+        }
+    }
+
+    pixSetPadBits(pix, 0);
     return pix;
 }
 
@@ -626,7 +641,7 @@ readHeaderMemPng(const l_uint8  *data,
 {
 l_uint16   twobytes;
 l_uint16  *pshort;
-l_int32    colortype, bps, spp;
+l_int32    colortype, w, h, bps, spp;
 l_uint32  *pword;
 
     PROCNAME("readHeaderMemPng");
@@ -649,8 +664,10 @@ l_uint32  *pword;
 
     pword = (l_uint32 *)data;
     pshort = (l_uint16 *)data;
-    if (pw) *pw = convertOnLittleEnd32(pword[4]);
-    if (ph) *ph = convertOnLittleEnd32(pword[5]);
+    w = convertOnLittleEnd32(pword[4]);
+    h = convertOnLittleEnd32(pword[5]);
+    if (w < 1 || h < 1)
+        return ERROR_INT("invalid w or h", procName, 1);
     twobytes = convertOnLittleEnd16(pshort[12]); /* contains depth/sample  */
                                                  /* and the color type     */
     colortype = twobytes & 0xff;  /* color type */
@@ -673,6 +690,12 @@ l_uint32  *pword;
     } else {  /* gray (0) or cmap (3) or cmap+alpha (3) */
         spp = 1;
     }
+    if (bps < 1 || bps > 16) {
+        L_ERROR("invalid bps = %d\n", procName, bps);
+        return 1;
+    }
+    if (pw) *pw = w;
+    if (ph) *ph = h;
     if (pbps) *pbps = bps;
     if (pspp) *pspp = spp;
     if (piscmap) {
@@ -1009,9 +1032,7 @@ pixWriteStreamPng(FILE      *fp,
                   l_float32  gamma)
 {
 char         commentstring[] = "Comment";
-l_int32      i, j, k;
-l_int32      wpl, d, spp, cmflag, opaque;
-l_int32      ncolors, compval;
+l_int32      i, j, k, wpl, d, spp, cmflag, opaque, ncolors, compval, valid;
 l_int32     *rmap, *gmap, *bmap, *amap;
 l_uint32    *data, *ppixel;
 png_byte     bit_depth, color_type;
@@ -1034,42 +1055,20 @@ char        *text;
     if (!pix)
         return ERROR_INT("pix not defined", procName, 1);
 
-        /* Allocate the 2 data structures */
-    if ((png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING,
-                   (png_voidp)NULL, NULL, NULL)) == NULL)
-        return ERROR_INT("png_ptr not made", procName, 1);
-
-    if ((info_ptr = png_create_info_struct(png_ptr)) == NULL) {
-        png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
-        return ERROR_INT("info_ptr not made", procName, 1);
-    }
-
-        /* Set up png setjmp error handling */
-    if (setjmp(png_jmpbuf(png_ptr))) {
-        png_destroy_write_struct(&png_ptr, &info_ptr);
-        return ERROR_INT("internal png error", procName, 1);
-    }
-
-    png_init_io(png_ptr, fp);
-
-        /* With best zlib compression (9), get between 1 and 10% improvement
-         * over default (6), but the compression is 3 to 10 times slower.
-         * Use the zlib default (6) as our default compression unless
-         * pix->special falls in the range [10 ... 19]; then subtract 10
-         * to get the compression value.  */
-    compval = Z_DEFAULT_COMPRESSION;
-    if (pix->special >= 10 && pix->special < 20)
-        compval = pix->special - 10;
-    png_set_compression_level(png_ptr, compval);
-
     w = pixGetWidth(pix);
     h = pixGetHeight(pix);
     d = pixGetDepth(pix);
     spp = pixGetSpp(pix);
-    if ((cmap = pixGetColormap(pix)))
+
+        /* A cmap validity check should prevent low-level colormap errors. */
+    if ((cmap = pixGetColormap(pix))) {
         cmflag = 1;
-    else
+        pixcmapIsValid(cmap, pix, &valid);
+        if (!valid)
+            return ERROR_INT("colormap is not valid", procName, 1);
+    } else {
         cmflag = 0;
+    }
     pixSetPadBits(pix, 0);
 
         /* Set the color type and bit depth. */
@@ -1089,9 +1088,40 @@ char        *text;
         color_type = PNG_COLOR_TYPE_PALETTE;  /* 3 */
 
 #if  DEBUG_WRITE
-    fprintf(stderr, "cmflag = %d, bit_depth = %d, color_type = %d\n",
-            cmflag, bit_depth, color_type);
+    lept_stderr("cmflag = %d, bit_depth = %d, color_type = %d\n",
+                cmflag, bit_depth, color_type);
 #endif  /* DEBUG_WRITE */
+
+        /* Allocate the 2 png data structures */
+    if ((png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING,
+                   (png_voidp)NULL, NULL, NULL)) == NULL)
+        return ERROR_INT("png_ptr not made", procName, 1);
+    if ((info_ptr = png_create_info_struct(png_ptr)) == NULL) {
+        png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
+        return ERROR_INT("info_ptr not made", procName, 1);
+    }
+
+        /* Set up png setjmp error handling */
+    pix1 = NULL;
+    row_pointers = NULL;
+    if (setjmp(png_jmpbuf(png_ptr))) {
+        png_destroy_write_struct(&png_ptr, &info_ptr);
+        LEPT_FREE(row_pointers);
+        pixDestroy(&pix1);
+        return ERROR_INT("internal png error", procName, 1);
+    }
+
+    png_init_io(png_ptr, fp);
+
+        /* With best zlib compression (9), get between 1 and 10% improvement
+         * over default (6), but the compression is 3 to 10 times slower.
+         * Use the zlib default (6) as our default compression unless
+         * pix->special falls in the range [10 ... 19]; then subtract 10
+         * to get the compression value.  */
+    compval = Z_DEFAULT_COMPRESSION;
+    if (pix->special >= 10 && pix->special < 20)
+        compval = pix->special - 10;
+    png_set_compression_level(png_ptr, compval);
 
     png_set_IHDR(png_ptr, info_ptr, w, h, bit_depth, color_type,
                  PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_BASE,
@@ -1106,27 +1136,27 @@ char        *text;
         png_set_pHYs(png_ptr, info_ptr, xres, yres, PNG_RESOLUTION_METER);
 
     if (cmflag) {
-        pixcmapToArrays(cmap, &rmap, &gmap, &bmap, &amap);
-        ncolors = pixcmapGetCount(cmap);
-        pixcmapIsOpaque(cmap, &opaque);
-
             /* Make and save the palette */
+        ncolors = pixcmapGetCount(cmap);
         palette = (png_colorp)LEPT_CALLOC(ncolors, sizeof(png_color));
+        pixcmapToArrays(cmap, &rmap, &gmap, &bmap, &amap);
         for (i = 0; i < ncolors; i++) {
             palette[i].red = (png_byte)rmap[i];
             palette[i].green = (png_byte)gmap[i];
             palette[i].blue = (png_byte)bmap[i];
             alpha[i] = (png_byte)amap[i];
         }
-
-        png_set_PLTE(png_ptr, info_ptr, palette, (int)ncolors);
-        if (!opaque)  /* alpha channel has some transparency; assume valid */
-            png_set_tRNS(png_ptr, info_ptr, (png_bytep)alpha,
-                         (int)ncolors, NULL);
         LEPT_FREE(rmap);
         LEPT_FREE(gmap);
         LEPT_FREE(bmap);
         LEPT_FREE(amap);
+        png_set_PLTE(png_ptr, info_ptr, palette, (int)ncolors);
+        LEPT_FREE(palette);
+
+        pixcmapIsOpaque(cmap, &opaque);
+        if (!opaque)  /* alpha channel has some transparency; assume valid */
+            png_set_tRNS(png_ptr, info_ptr, (png_bytep)alpha,
+                         (int)ncolors, NULL);
     }
 
         /* 0.4545 is treated as the default by some image
@@ -1167,7 +1197,6 @@ char        *text;
         }
         if (!pix1) {
             png_destroy_write_struct(&png_ptr, &info_ptr);
-            if (cmflag) LEPT_FREE(palette);
             return ERROR_INT("pix1 not made", procName, 1);
         }
 
@@ -1182,8 +1211,6 @@ char        *text;
             /* Transfer the data */
         png_write_image(png_ptr, row_pointers);
         png_write_end(png_ptr, info_ptr);
-
-        if (cmflag) LEPT_FREE(palette);
         LEPT_FREE(row_pointers);
         pixDestroy(&pix1);
         png_destroy_write_struct(&png_ptr, &info_ptr);
@@ -1218,9 +1245,6 @@ char        *text;
     }
 
     png_write_end(png_ptr, info_ptr);
-
-    if (cmflag)
-        LEPT_FREE(palette);
     png_destroy_write_struct(&png_ptr, &info_ptr);
     return 0;
 }
@@ -1522,24 +1546,22 @@ pixReadMemPng(const l_uint8  *filedata,
               size_t          filesize)
 {
 l_uint8      byte;
-l_int32      rval, gval, bval;
-l_int32      i, j, k, index, ncolors, bitval;
+l_int32      i, j, k, index, ncolors, bitval, rval, gval, bval, valid;
 l_int32      wpl, d, spp, cindex, tRNS;
 l_uint32     png_transforms;
 l_uint32    *data, *line, *ppixel;
 int          num_palette, num_text, num_trans;
 png_byte     bit_depth, color_type, channels;
-png_uint_32  w, h, rowbytes;
-png_uint_32  xres, yres;
+png_uint_32  w, h, rowbytes, xres, yres;
 png_bytep    rowptr, trans;
 png_bytep   *row_pointers;
 png_structp  png_ptr;
 png_infop    info_ptr, end_info;
 png_colorp   palette;
 png_textp    text_ptr;  /* ptr to text_chunk */
+MEMIODATA    state;
 PIX         *pix, *pix1;
 PIXCMAP     *cmap;
-MEMIODATA    state;
 
     PROCNAME("pixReadMemPng");
 
@@ -1613,7 +1635,7 @@ MEMIODATA    state;
 
         /* Remove if/when this is implemented for all bit_depths */
     if (spp == 3 && bit_depth != 8) {
-        fprintf(stderr, "Help: spp = 3 and depth = %d != 8\n!!", bit_depth);
+        lept_stderr("Help: spp = 3 and depth = %d != 8\n!!", bit_depth);
         png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
         return (PIX *)ERROR_PTR("not implemented for this depth",
             procName, NULL);
@@ -1641,8 +1663,11 @@ MEMIODATA    state;
     pixSetInputFormat(pix, IFF_PNG);
     wpl = pixGetWpl(pix);
     data = pixGetData(pix);
-    pixSetColormap(pix, cmap);
     pixSetSpp(pix, spp);
+    if (pixSetColormap(pix, cmap)) {
+        pixDestroy(&pix);
+        return (PIX *)ERROR_PTR("invalid colormap", procName, NULL);
+    }
 
     if (spp == 1 && !tRNS) {  /* copy straight from buffer to pix */
         for (i = 0; i < h; i++) {
@@ -1720,16 +1745,16 @@ MEMIODATA    state;
             pixSetSpp(pix, 4);
 
 #if DEBUG_READ
-            fprintf(stderr, "ncolors = %d, num_trans = %d\n",
-                    ncolors, num_trans);
+            lept_stderr("ncolors = %d, num_trans = %d\n",
+                        ncolors, num_trans);
             for (i = 0; i < ncolors; i++) {
                 pixcmapGetColor(cmap, i, &rval, &gval, &bval);
                 if (i < num_trans) {
-                    fprintf(stderr, "(r,g,b,a) = (%d,%d,%d,%d)\n",
-                            rval, gval, bval, trans[i]);
+                    lept_stderr("(r,g,b,a) = (%d,%d,%d,%d)\n",
+                                rval, gval, bval, trans[i]);
                 } else {
-                    fprintf(stderr, "(r,g,b,a) = (%d,%d,%d,<<255>>)\n",
-                            rval, gval, bval);
+                    lept_stderr("(r,g,b,a) = (%d,%d,%d,<<255>>)\n",
+                                rval, gval, bval);
                 }
             }
 #endif  /* DEBUG_READ */
@@ -1785,8 +1810,7 @@ MEMIODATA    state;
 #if  DEBUG_READ
     if (cmap) {
         for (i = 0; i < 16; i++) {
-            fprintf(stderr, "[%d] = %d\n", i,
-                   ((l_uint8 *)(cmap->array))[i]);
+            lept_stderr("[%d] = %d\n", i, ((l_uint8 *)(cmap->array))[i]);
         }
     }
 #endif  /* DEBUG_READ */
@@ -1834,6 +1858,17 @@ MEMIODATA    state;
         pixSetText(pix, text_ptr->text);
 
     png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
+
+       /* Final validity check on the colormap */
+    if ((cmap = pixGetColormap(pix)) != NULL) {
+        pixcmapIsValid(cmap, pix, &valid);
+        if (!valid) {
+            pixDestroy(&pix);
+            return (PIX *)ERROR_PTR("colormap is not valid", procName, NULL);
+        }
+    }
+
+    pixSetPadBits(pix, 0);
     return pix;
 }
 
@@ -1862,16 +1897,12 @@ pixWriteMemPng(l_uint8  **pfiledata,
                l_float32  gamma)
 {
 char         commentstring[] = "Comment";
-l_int32      i, j, k;
-l_int32      wpl, d, spp, cmflag, opaque;
-l_int32      ncolors, compval;
+l_int32      i, j, k, wpl, d, spp, cmflag, opaque, ncolors, compval, valid;
 l_int32     *rmap, *gmap, *bmap, *amap;
 l_uint32    *data, *ppixel;
 png_byte     bit_depth, color_type;
 png_byte     alpha[256];
-png_uint_32  w, h;
-png_uint_32  xres, yres;
-png_bytep   *row_pointers;
+png_uint_32  w, h, xres, yres;
 png_bytep    rowbuffer;
 png_structp  png_ptr;
 png_infop    info_ptr;
@@ -1898,43 +1929,22 @@ MEMIODATA    state;
     state.m_Count = 0;
     state.m_Last = &state;
 
-        /* Allocate the 2 data structures */
-    if ((png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING,
-                   (png_voidp)NULL, NULL, NULL)) == NULL)
-        return ERROR_INT("png_ptr not made", procName, 1);
-
-    if ((info_ptr = png_create_info_struct(png_ptr)) == NULL) {
-        png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
-        return ERROR_INT("info_ptr not made", procName, 1);
-    }
-
-        /* Set up png setjmp error handling */
-    if (setjmp(png_jmpbuf(png_ptr))) {
-        png_destroy_write_struct(&png_ptr, &info_ptr);
-        return ERROR_INT("internal png error", procName, 1);
-    }
-
-    png_set_write_fn(png_ptr, &state, memio_png_write_data,
-                     (png_flush_ptr)NULL);
-
-        /* With best zlib compression (9), get between 1 and 10% improvement
-         * over default (6), but the compression is 3 to 10 times slower.
-         * Use the zlib default (6) as our default compression unless
-         * pix->special falls in the range [10 ... 19]; then subtract 10
-         * to get the compression value.  */
-    compval = Z_DEFAULT_COMPRESSION;
-    if (pix->special >= 10 && pix->special < 20)
-        compval = pix->special - 10;
-    png_set_compression_level(png_ptr, compval);
-
     w = pixGetWidth(pix);
     h = pixGetHeight(pix);
     d = pixGetDepth(pix);
     spp = pixGetSpp(pix);
-    if ((cmap = pixGetColormap(pix)))
+
+        /* A cmap validity check should prevent low-level colormap errors. */
+    if ((cmap = pixGetColormap(pix))) {
         cmflag = 1;
-    else
+        pixcmapIsValid(cmap, pix, &valid);
+        if (!valid)
+            return ERROR_INT("colormap is not valid", procName, 1);
+    } else {
         cmflag = 0;
+    }
+
+    pixSetPadBits(pix, 0);
 
         /* Set the color type and bit depth. */
     if (d == 32 && spp == 4) {
@@ -1953,9 +1963,40 @@ MEMIODATA    state;
         color_type = PNG_COLOR_TYPE_PALETTE;  /* 3 */
 
 #if  DEBUG_WRITE
-    fprintf(stderr, "cmflag = %d, bit_depth = %d, color_type = %d\n",
-            cmflag, bit_depth, color_type);
+    lept_stderr("cmflag = %d, bit_depth = %d, color_type = %d\n",
+                cmflag, bit_depth, color_type);
 #endif  /* DEBUG_WRITE */
+
+        /* Allocate the 2 data structures */
+    if ((png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING,
+                   (png_voidp)NULL, NULL, NULL)) == NULL)
+        return ERROR_INT("png_ptr not made", procName, 1);
+
+    if ((info_ptr = png_create_info_struct(png_ptr)) == NULL) {
+        png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
+        return ERROR_INT("info_ptr not made", procName, 1);
+    }
+
+        /* Set up png setjmp error handling */
+    pix1 = NULL;
+    if (setjmp(png_jmpbuf(png_ptr))) {
+        png_destroy_write_struct(&png_ptr, &info_ptr);
+        pixDestroy(&pix1);
+        return ERROR_INT("internal png error", procName, 1);
+    }
+
+    png_set_write_fn(png_ptr, &state, memio_png_write_data,
+                     (png_flush_ptr)NULL);
+
+        /* With best zlib compression (9), get between 1 and 10% improvement
+         * over default (6), but the compression is 3 to 10 times slower.
+         * Use the zlib default (6) as our default compression unless
+         * pix->special falls in the range [10 ... 19]; then subtract 10
+         * to get the compression value.  */
+    compval = Z_DEFAULT_COMPRESSION;
+    if (pix->special >= 10 && pix->special < 20)
+        compval = pix->special - 10;
+    png_set_compression_level(png_ptr, compval);
 
     png_set_IHDR(png_ptr, info_ptr, w, h, bit_depth, color_type,
                  PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_BASE,
@@ -1970,27 +2011,27 @@ MEMIODATA    state;
         png_set_pHYs(png_ptr, info_ptr, xres, yres, PNG_RESOLUTION_METER);
 
     if (cmflag) {
-        pixcmapToArrays(cmap, &rmap, &gmap, &bmap, &amap);
-        ncolors = pixcmapGetCount(cmap);
-        pixcmapIsOpaque(cmap, &opaque);
-
             /* Make and save the palette */
+        ncolors = pixcmapGetCount(cmap);
         palette = (png_colorp)LEPT_CALLOC(ncolors, sizeof(png_color));
+        pixcmapToArrays(cmap, &rmap, &gmap, &bmap, &amap);
         for (i = 0; i < ncolors; i++) {
             palette[i].red = (png_byte)rmap[i];
             palette[i].green = (png_byte)gmap[i];
             palette[i].blue = (png_byte)bmap[i];
             alpha[i] = (png_byte)amap[i];
         }
-
-        png_set_PLTE(png_ptr, info_ptr, palette, (int)ncolors);
-        if (!opaque)  /* alpha channel has some transparency; assume valid */
-            png_set_tRNS(png_ptr, info_ptr, (png_bytep)alpha,
-                         (int)ncolors, NULL);
         LEPT_FREE(rmap);
         LEPT_FREE(gmap);
         LEPT_FREE(bmap);
         LEPT_FREE(amap);
+        png_set_PLTE(png_ptr, info_ptr, palette, (int)ncolors);
+        LEPT_FREE(palette);
+
+        pixcmapIsOpaque(cmap, &opaque);
+        if (!opaque)  /* alpha channel has some transparency; assume valid */
+            png_set_tRNS(png_ptr, info_ptr, (png_bytep)alpha,
+                         (int)ncolors, NULL);
     }
 
         /* 0.4545 is treated as the default by some image
@@ -2031,28 +2072,19 @@ MEMIODATA    state;
         }
         if (!pix1) {
             png_destroy_write_struct(&png_ptr, &info_ptr);
-            if (cmflag) LEPT_FREE(palette);
             memio_free(&state);
             return ERROR_INT("pix1 not made", procName, 1);
         }
 
-            /* Make and assign array of image row pointers */
-        row_pointers = (png_bytep *)LEPT_CALLOC(h, sizeof(png_bytep));
+            /* Transfer the data */
         wpl = pixGetWpl(pix1);
         data = pixGetData(pix1);
         for (i = 0; i < h; i++)
-            row_pointers[i] = (png_bytep)(data + i * wpl);
-        png_set_rows(png_ptr, info_ptr, row_pointers);
-
-            /* Transfer the data */
-        png_write_image(png_ptr, row_pointers);
+            png_write_row(png_ptr, (png_bytep)(data + i * wpl));
         png_write_end(png_ptr, info_ptr);
 
-        if (cmflag) LEPT_FREE(palette);
-        LEPT_FREE(row_pointers);
         pixDestroy(&pix1);
         png_destroy_write_struct(&png_ptr, &info_ptr);
-
         memio_png_flush(&state);
         *pfiledata = (l_uint8 *)state.m_Buffer;
         state.m_Buffer = 0;
@@ -2087,13 +2119,9 @@ MEMIODATA    state;
         }
         LEPT_FREE(rowbuffer);
     }
-
     png_write_end(png_ptr, info_ptr);
 
-    if (cmflag)
-        LEPT_FREE(palette);
     png_destroy_write_struct(&png_ptr, &info_ptr);
-
     memio_png_flush(&state);
     *pfiledata = (l_uint8 *)state.m_Buffer;
     state.m_Buffer = 0;

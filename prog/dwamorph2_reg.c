@@ -30,11 +30,10 @@
  *     Compare the timings of various binary morphological implementations.
  */
 
-#ifndef  _WIN32
-#include <unistd.h>
-#else
-#include <windows.h>   /* for Sleep() */
-#endif  /* _WIN32 */
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
 #define  HALFWIDTH   3
@@ -82,7 +81,7 @@ static char  mainName[] = "dwamorph2_reg";
         sel = selaGetSel(selalinear, i);
         selGetParameters(sel, &sy, &sx, NULL, NULL);
         selname = selGetName(sel);
-        fprintf(stderr, " %d .", i);
+        lept_stderr(" %d .", i);
 
         startTimer();
         for (j = 0; j < NTIMES; j++)
@@ -138,7 +137,7 @@ static char  mainName[] = "dwamorph2_reg";
         sel = selaGetSel(selalinear, i);
         selGetParameters(sel, &sy, &sx, NULL, NULL);
         selname = selGetName(sel);
-        fprintf(stderr, " %d .", i);
+        lept_stderr(" %d .", i);
 
         startTimer();
         for (j = 0; j < NTIMES; j++)
@@ -193,7 +192,7 @@ static char  mainName[] = "dwamorph2_reg";
         sel = selaGetSel(selalinear, i);
         selGetParameters(sel, &sy, &sx, NULL, NULL);
         selname = selGetName(sel);
-        fprintf(stderr, " %d .", i);
+        lept_stderr(" %d .", i);
 
         startTimer();
         for (j = 0; j < NTIMES; j++)
@@ -248,7 +247,7 @@ static char  mainName[] = "dwamorph2_reg";
         sel = selaGetSel(selalinear, i);
         selGetParameters(sel, &sy, &sx, NULL, NULL);
         selname = selGetName(sel);
-        fprintf(stderr, " %d .", i);
+        lept_stderr(" %d .", i);
 
         startTimer();
         for (j = 0; j < NTIMES; j++)
@@ -286,12 +285,6 @@ static char  mainName[] = "dwamorph2_reg";
     gplotAddPlot(gplot, nax, nac3, GPLOT_LINES, "linear dwa");
     gplotAddPlot(gplot, nax, nac4, GPLOT_LINES, "composite dwa");
     gplotMakeOutput(gplot);
-#ifndef  _WIN32
-    sleep(1);
-#else
-    Sleep(1000);
-#endif  /* _WIN32 */
-
     gplotDestroy(&gplot);
     numaDestroy(&nac1);
     numaDestroy(&nac2);

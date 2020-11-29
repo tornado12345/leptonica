@@ -28,6 +28,10 @@
  * gammatest.c
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <math.h>
 #include "allheaders.h"
 
@@ -61,11 +65,11 @@ static char  mainName[] = "gammatest";
 
     startTimer();
     pixd = pixGammaTRC(NULL, pixs, gam, MINVAL, MAXVAL);
-    fprintf(stderr, "Time for gamma: %7.3f sec\n", stopTimer());
+    lept_stderr("Time for gamma: %7.3f sec\n", stopTimer());
     pixGammaTRC(pixs, pixs, gam, MINVAL, MAXVAL);
     pixEqual(pixs, pixd, &same);
     if (!same)
-        fprintf(stderr, "Error in pixGammaTRC!\n");
+        lept_stderr("Error in pixGammaTRC!\n");
     pixWrite(fileout, pixs, IFF_JFIF_JPEG);
     pixDestroy(&pixs);
 

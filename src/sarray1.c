@@ -133,6 +133,10 @@
  * </pre>
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #ifndef _WIN32
 #include <dirent.h>     /* unix only */
@@ -142,8 +146,8 @@
 #endif  /* ! _WIN32 */
 #include "allheaders.h"
 
-static const l_int32  INITIAL_PTR_ARRAYSIZE = 50;     /* n'importe quoi */
-static const l_int32  L_BUF_SIZE = 512;
+static const l_uint32  MaxPtrArraySize = 25000000;  /* 25 million */
+static const l_int32   InitialPtrArraySize = 50;      /*!< n'importe quoi */
 
     /* Static functions */
 static l_int32 sarrayExtendArray(SARRAY *sa);
@@ -165,8 +169,8 @@ SARRAY  *sa;
 
     PROCNAME("sarrayCreate");
 
-    if (n <= 0)
-        n = INITIAL_PTR_ARRAYSIZE;
+    if (n <= 0 || n > MaxPtrArraySize)
+        n = InitialPtrArraySize;
 
     sa = (SARRAY *)LEPT_CALLOC(1, sizeof(SARRAY));
     if ((sa->array = (char **)LEPT_CALLOC(n, sizeof(char *))) == NULL) {
@@ -315,7 +319,7 @@ SARRAY  *sa;
                                                 procName, NULL);
                 }
                 sarrayAddString(sa, substring, L_INSERT);
-/*                fprintf(stderr, "substring = %s\n", substring); */
+/*                lept_stderr("substring = %s\n", substring); */
                 startptr = i + 1;
             }
         }
@@ -327,7 +331,7 @@ SARRAY  *sa;
                                            procName, NULL);
             }
             sarrayAddString(sa, substring, L_INSERT);
-/*            fprintf(stderr, "substring = %s\n", substring); */
+/*            lept_stderr("substring = %s\n", substring); */
         }
         LEPT_FREE(cstring);
     } else {  /* remove blank lines; use strtok */
@@ -376,9 +380,7 @@ SARRAY  *sa;
         }
         LEPT_FREE(sa);
     }
-
     *psa = NULL;
-    return;
 }
 
 
@@ -458,8 +460,10 @@ l_int32  n;
         return ERROR_INT("invalid copyflag", procName, 1);
 
     n = sarrayGetCount(sa);
-    if (n >= sa->nalloc)
-        sarrayExtendArray(sa);
+    if (n >= sa->nalloc) {
+        if (sarrayExtendArray(sa))
+            return ERROR_INT("extension failed", procName, 1);
+    }
 
     if (copyflag == L_COPY)
         sa->array[n] = stringNew(string);
@@ -475,19 +479,32 @@ l_int32  n;
  *
  * \param[in]    sa    string array
  * \return  0 if OK, 1 on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) Doubles the size of the string ptr array.
+ *      (2) The max number of strings is 25M.
+ * </pre>
  */
 static l_int32
 sarrayExtendArray(SARRAY  *sa)
 {
+size_t  oldsize, newsize;
+
     PROCNAME("sarrayExtendArray");
 
     if (!sa)
         return ERROR_INT("sa not defined", procName, 1);
+    if (sa->nalloc > MaxPtrArraySize)  /* belt & suspenders */
+        return ERROR_INT("sa has too many ptrs", procName, 1);
+    oldsize = sa->nalloc * sizeof(char *);
+    newsize = 2 * oldsize;
+    if (newsize > 8 * MaxPtrArraySize)  /* ptrs for 25 million strings */
+        return ERROR_INT("newsize > 200 MB; too large", procName, 1);
 
     if ((sa->array = (char **)reallocNew((void **)&sa->array,
-                              sizeof(char *) * sa->nalloc,
-                              2 * sizeof(char *) * sa->nalloc)) == NULL)
-            return ERROR_INT("new ptr array not returned", procName, 1);
+                                         oldsize, newsize)) == NULL)
+        return ERROR_INT("new ptr array not returned", procName, 1);
 
     sa->nalloc *= 2;
     return 0;
@@ -1257,7 +1274,7 @@ SARRAY  *saout;
  *             start = 0;
  *             while (!sarrayParseRange(sa, start, &actstart, &end, &start,
  *                    "--", 0))
- *                 fprintf(stderr, "start = %d, end = %d\n", actstart, end);
+ *                 lept_stderr("start = %d, end = %d\n", actstart, end);
  * </pre>
  */
 l_int32
@@ -1375,11 +1392,12 @@ SARRAY  *sa;
  * <pre>
  * Notes:
  *      (1) We store the size of each string along with the string.
- *          The limit on the number of strings is 2^24.
+ *          The limit on the number of strings is 25M.
  *          The limit on the size of any string is 2^30 bytes.
  *      (2) This allows a string to have embedded newlines.  By reading
  *          the entire string, as determined by its size, we are
  *          not affected by any number of embedded newlines.
+ *      (3) It is OK for the sarray to be empty.
  * </pre>
  */
 SARRAY *
@@ -1400,13 +1418,16 @@ SARRAY  *sa;
         return (SARRAY *)ERROR_PTR("invalid sarray version", procName, NULL);
     if (fscanf(fp, "Number of strings = %d\n", &n) != 1)
         return (SARRAY *)ERROR_PTR("error on # strings", procName, NULL);
-    if (n > (1 << 24))
-        return (SARRAY *)ERROR_PTR("more than 2^24 strings!", procName, NULL);
+    if (n < 0)
+        return (SARRAY *)ERROR_PTR("num string ptrs <= 0", procName, NULL);
+    if (n > MaxPtrArraySize)
+        return (SARRAY *)ERROR_PTR("too many string ptrs", procName, NULL);
+    if (n == 0) L_INFO("the sarray is empty\n", procName);
 
     success = TRUE;
     if ((sa = sarrayCreate(n)) == NULL)
         return (SARRAY *)ERROR_PTR("sa not made", procName, NULL);
-    bufsize = L_BUF_SIZE + 1;
+    bufsize = 512 + 1;
     stringbuf = (char *)LEPT_CALLOC(bufsize, sizeof(char));
 
     for (i = 0; i < n; i++) {
@@ -1875,12 +1896,26 @@ struct stat     st;
 
     if (!dirname)
         return (SARRAY *)ERROR_PTR("dirname not defined", procName, NULL);
+    if (dirname[0] == '\0')
+        return (SARRAY *)ERROR_PTR("dirname is empty", procName, NULL);
 
-        /* It's nice to ignore directories.  fstatat() works with relative
-           directory paths, but stat() requires using the absolute path.
-           Also, do not pass NULL as the second parameter to realpath();
-           use a buffer of sufficient size. */
-    ignore = realpath(dirname, dir);  /* see note above */
+        /* Who would have thought it was this fiddly to open a directory
+           and get the files inside?  fstatat() works with relative
+           directory paths, and stat() requires using the absolute path.
+           realpath works as follows for files and directories:
+            * If the file or directory exists, realpath returns its path;
+              else it returns NULL.
+            * If the second arg to realpath is passed in, the canonical path
+              is returned there.  Use a buffer of sufficient size.  If the
+              second arg is NULL, the path is malloc'd and returned if the
+              file or directory exists.
+           We pass in a buffer for the second arg, and check that the canonical
+           directory path was made.  The existence of the directory is checked
+           later, after its actual path is returned by genPathname().  */
+    dir[0] = '\0';  /* init empty in case realpath() fails to write it */
+    ignore = realpath(dirname, dir);
+    if (dir[0] == '\0')
+        return (SARRAY *)ERROR_PTR("dir not made", procName, NULL);
     realdir = genPathname(dir, NULL);
     if ((pdir = opendir(realdir)) == NULL) {
         LEPT_FREE(realdir);
@@ -1894,8 +1929,7 @@ struct stat     st;
 #else
         size = strlen(realdir) + strlen(pdirentry->d_name) + 2;
         if (size > PATH_MAX) {
-            L_ERROR("size = %lu too large; skipping\n", procName,
-                    (unsigned long)size);
+            L_ERROR("size = %zu too large; skipping\n", procName, size);
             continue;
         }
         stat_path = (char *)LEPT_CALLOC(size, 1);

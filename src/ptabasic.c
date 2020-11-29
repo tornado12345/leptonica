@@ -24,7 +24,6 @@
  -  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *====================================================================*/
 
-
 /*!
  * \file  ptabasic.c
  * <pre>
@@ -93,15 +92,20 @@
  * </pre>
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #include "allheaders.h"
 
-static const l_int32  INITIAL_PTR_ARRAYSIZE = 20;   /* n'import quoi */
+static const l_uint32  MaxArraySize = 100000000;  /* 100 million */
+static const l_uint32  MaxPtrArraySize = 10000000;  /* 10 million */
+static const l_int32 InitialArraySize = 50;      /*!< n'importe quoi */
 
     /* Static functions */
 static l_int32 ptaExtendArrays(PTA *pta);
 static l_int32 ptaaExtendArray(PTAA *ptaa);
-
 
 /*---------------------------------------------------------------------*
  *                Pta creation, destruction, copy, clone               *
@@ -109,7 +113,7 @@ static l_int32 ptaaExtendArray(PTAA *ptaa);
 /*!
  * \brief   ptaCreate()
  *
- * \param[in]    n  initial array sizes
+ * \param[in]    n    initial array sizes
  * \return  pta, or NULL on error.
  */
 PTA *
@@ -119,14 +123,13 @@ PTA  *pta;
 
     PROCNAME("ptaCreate");
 
-    if (n <= 0)
-        n = INITIAL_PTR_ARRAYSIZE;
+    if (n <= 0 || n > MaxArraySize)
+        n = InitialArraySize;
 
     pta = (PTA *)LEPT_CALLOC(1, sizeof(PTA));
     pta->n = 0;
     pta->nalloc = n;
     ptaChangeRefcount(pta, 1);  /* sets to 1 */
-
     pta->x = (l_float32 *)LEPT_CALLOC(n, sizeof(l_float32));
     pta->y = (l_float32 *)LEPT_CALLOC(n, sizeof(l_float32));
     if (!pta->x || !pta->y) {
@@ -141,7 +144,7 @@ PTA  *pta;
 /*!
  * \brief   ptaCreateFromNuma()
  *
- * \param[in]    nax [optional] can be null
+ * \param[in]    nax   [optional] can be null
  * \param[in]    nay
  * \return  pta, or NULL on error.
  */
@@ -179,7 +182,7 @@ PTA       *pta;
 /*!
  * \brief   ptaDestroy()
  *
- * \param[in,out]   ppta to be nulled
+ * \param[in,out]   ppta   will be set to null before returning
  * \return  void
  *
  * <pre>
@@ -209,9 +212,7 @@ PTA  *pta;
         LEPT_FREE(pta->y);
         LEPT_FREE(pta);
     }
-
     *ppta = NULL;
-    return;
 }
 
 
@@ -249,8 +250,8 @@ PTA       *npta;
  * \brief   ptaCopyRange()
  *
  * \param[in]    ptas
- * \param[in]    istart  starting index in ptas
- * \param[in]    iend  ending index in ptas; use 0 to copy to end
+ * \param[in]    istart    starting index in ptas
+ * \param[in]    iend      ending index in ptas; use 0 to copy to end
  * \return  0 if OK, 1 on error
  */
 PTA *
@@ -351,12 +352,14 @@ l_int32  n;
         return ERROR_INT("pta not defined", procName, 1);
 
     n = pta->n;
-    if (n >= pta->nalloc)
-        ptaExtendArrays(pta);
+    if (n >= pta->nalloc) {
+        if (ptaExtendArrays(pta))
+            return ERROR_INT("extension failed", procName, 1);
+    }
+
     pta->x[n] = x;
     pta->y[n] = y;
     pta->n++;
-
     return 0;
 }
 
@@ -366,25 +369,36 @@ l_int32  n;
  *
  * \param[in]    pta
  * \return  0 if OK; 1 on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) The max number of points is 100M.
+ * </pre>
  */
 static l_int32
 ptaExtendArrays(PTA  *pta)
 {
+size_t  oldsize, newsize;
+
     PROCNAME("ptaExtendArrays");
 
     if (!pta)
         return ERROR_INT("pta not defined", procName, 1);
+    if (pta->nalloc > MaxArraySize)  /* belt & suspenders */
+        return ERROR_INT("pta has too many ptrs", procName, 1);
+    oldsize = pta->nalloc * sizeof(l_float32);
+    newsize = 2 * oldsize;
+    if (newsize > 4 * MaxArraySize)  /* array of 100M floats */
+        return ERROR_INT("newsize > 400 MB; too large", procName, 1);
 
     if ((pta->x = (l_float32 *)reallocNew((void **)&pta->x,
-                               sizeof(l_float32) * pta->nalloc,
-                               2 * sizeof(l_float32) * pta->nalloc)) == NULL)
+                                          oldsize, newsize)) == NULL)
         return ERROR_INT("new x array not returned", procName, 1);
     if ((pta->y = (l_float32 *)reallocNew((void **)&pta->y,
-                               sizeof(l_float32) * pta->nalloc,
-                               2 * sizeof(l_float32) * pta->nalloc)) == NULL)
+                                          oldsize, newsize)) == NULL)
         return ERROR_INT("new y array not returned", procName, 1);
 
-    pta->nalloc = 2 * pta->nalloc;
+    pta->nalloc *= 2;
     return 0;
 }
 
@@ -396,8 +410,8 @@ ptaExtendArrays(PTA  *pta)
  * \brief   ptaInsertPt()
  *
  * \param[in]    pta
- * \param[in]    index at which pt is to be inserted
- * \param[in]    x, y point values
+ * \param[in]    index   at which pt is to be inserted
+ * \param[in]    x, y    point values
  * \return  0 if OK; 1 on error
  */
 l_ok
@@ -413,11 +427,15 @@ l_int32  i, n;
     if (!pta)
         return ERROR_INT("pta not defined", procName, 1);
     n = ptaGetCount(pta);
-    if (index < 0 || index > n)
-        return ERROR_INT("index not in {0...n}", procName, 1);
+    if (index < 0 || index > n) {
+        L_ERROR("index %d not in [0,...,%d]\n", procName, index, n);
+        return 1;
+    }
 
-    if (n > pta->nalloc)
-        ptaExtendArrays(pta);
+    if (n > pta->nalloc) {
+        if (ptaExtendArrays(pta))
+            return ERROR_INT("extension failed", procName, 1);
+    }
     pta->n++;
     for (i = n; i > index; i--) {
         pta->x[i] = pta->x[i - 1];
@@ -433,7 +451,7 @@ l_int32  i, n;
  * \brief   ptaRemovePt()
  *
  * \param[in]    pta
- * \param[in]    index of point to be removed
+ * \param[in]    index    of point to be removed
  * \return  0 if OK, 1 on error
  *
  * <pre>
@@ -454,8 +472,10 @@ l_int32  i, n;
     if (!pta)
         return ERROR_INT("pta not defined", procName, 1);
     n = ptaGetCount(pta);
-    if (index < 0 || index >= n)
-        return ERROR_INT("index not in {0...n - 1}", procName, 1);
+    if (index < 0 || index >= n) {
+        L_ERROR("index %d not in [0,...,%d]\n", procName, index, n - 1);
+        return 1;
+    }
 
         /* Remove the point */
     for (i = index + 1; i < n; i++) {
@@ -516,9 +536,9 @@ ptaGetCount(PTA  *pta)
  * \brief   ptaGetPt()
  *
  * \param[in]    pta
- * \param[in]    index  into arrays
- * \param[out]   px [optional] float x value
- * \param[out]   py [optional] float y value
+ * \param[in]    index    into arrays
+ * \param[out]   px       [optional] float x value
+ * \param[out]   py       [optional] float y value
  * \return  0 if OK; 1 on error
  */
 l_ok
@@ -546,9 +566,9 @@ ptaGetPt(PTA        *pta,
  * \brief   ptaGetIPt()
  *
  * \param[in]    pta
- * \param[in]    index  into arrays
- * \param[out]   px [optional] integer x value
- * \param[out]   py [optional] integer y value
+ * \param[in]    index    into arrays
+ * \param[out]   px       [optional] integer x value
+ * \param[out]   py       [optional] integer y value
  * \return  0 if OK; 1 on error
  */
 l_ok
@@ -576,7 +596,7 @@ ptaGetIPt(PTA      *pta,
  * \brief   ptaSetPt()
  *
  * \param[in]    pta
- * \param[in]    index  into arrays
+ * \param[in]    index    into arrays
  * \param[in]    x, y
  * \return  0 if OK; 1 on error
  */
@@ -603,8 +623,8 @@ ptaSetPt(PTA       *pta,
  * \brief   ptaGetArrays()
  *
  * \param[in]    pta
- * \param[out]   pnax [optional] numa of x array
- * \param[out]   pnay [optional] numa of y array
+ * \param[out]   pnax    [optional] numa of x array
+ * \param[out]   pnay    [optional] numa of y array
  * \return  0 if OK; 1 on error or if pta is empty
  *
  * <pre>
@@ -684,8 +704,14 @@ PTA   *pta;
 /*!
  * \brief   ptaReadStream()
  *
- * \param[in]    fp file stream
+ * \param[in]    fp    file stream
  * \return  pta, or NULL on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) It is OK for the pta to be empty (n == 0).
+ * </pre>
+
  */
 PTA *
 ptaReadStream(FILE  *fp)
@@ -706,11 +732,16 @@ PTA       *pta;
         return (PTA *)ERROR_PTR("invalid pta version", procName, NULL);
     if (fscanf(fp, " Number of pts = %d; format = %127s\n", &n, typestr) != 2)
         return (PTA *)ERROR_PTR("not a pta file", procName, NULL);
+    if (n < 0)
+        return (PTA *)ERROR_PTR("num pts <= 0", procName, NULL);
+    if (n > MaxArraySize)
+        return (PTA *)ERROR_PTR("too many pts", procName, NULL);
+    if (n == 0) L_INFO("the pta is empty\n", procName);
+
     if (!strcmp(typestr, "float"))
         type = 0;
     else  /* typestr is "integer" */
         type = 1;
-
     if ((pta = ptaCreate(n)) == NULL)
         return (PTA *)ERROR_PTR("pta not made", procName, NULL);
     for (i = 0; i < n; i++) {
@@ -736,8 +767,8 @@ PTA       *pta;
 /*!
  * \brief   ptaReadMem()
  *
- * \param[in]    data  serialization in ascii
- * \param[in]    size  of data in bytes; can use strlen to get it
+ * \param[in]    data    serialization in ascii
+ * \param[in]    size    of data in bytes; can use strlen to get it
  * \return  pta, or NULL on error
  */
 PTA *
@@ -766,7 +797,7 @@ PTA   *pta;
  *
  * \param[in]    filename
  * \param[in]    pta
- * \param[in]    type  0 for float values; 1 for integer values
+ * \param[in]    type       0 for float values; 1 for integer values
  * \return  0 if OK, 1 on error
  *
  * <pre>
@@ -799,7 +830,7 @@ ptaWriteDebug(const char  *filename,
  *
  * \param[in]    filename
  * \param[in]    pta
- * \param[in]    type  0 for float values; 1 for integer values
+ * \param[in]    type       0 for float values; 1 for integer values
  * \return  0 if OK, 1 on error
  */
 l_ok
@@ -830,9 +861,9 @@ FILE    *fp;
 /*!
  * \brief   ptaWriteStream()
  *
- * \param[in]    fp file stream
+ * \param[in]    fp      file stream
  * \param[in]    pta
- * \param[in]    type  0 for float values; 1 for integer values
+ * \param[in]    type    0 for float values; 1 for integer values
  * \return  0 if OK; 1 on error
  */
 l_ok
@@ -873,10 +904,10 @@ l_float32  x, y;
 /*!
  * \brief   ptaWriteMem()
  *
- * \param[out]   pdata data of serialized pta; ascii
- * \param[out]   psize size of returned data
+ * \param[out]   pdata    data of serialized pta; ascii
+ * \param[out]   psize    size of returned data
  * \param[in]    pta
- * \param[in]    type  0 for float values; 1 for integer values
+ * \param[in]    type     0 for float values; 1 for integer values
  * \return  0 if OK, 1 on error
  *
  * <pre>
@@ -932,7 +963,7 @@ FILE    *fp;
 /*!
  * \brief   ptaaCreate()
  *
- * \param[in]    n  initial number of ptrs
+ * \param[in]    n    initial number of ptrs
  * \return  ptaa, or NULL on error
  */
 PTAA *
@@ -942,11 +973,10 @@ PTAA  *ptaa;
 
     PROCNAME("ptaaCreate");
 
-    if (n <= 0)
-        n = INITIAL_PTR_ARRAYSIZE;
+    if (n <= 0 || n > MaxPtrArraySize)
+        n = InitialArraySize;
 
-    if ((ptaa = (PTAA *)LEPT_CALLOC(1, sizeof(PTAA))) == NULL)
-        return (PTAA *)ERROR_PTR("ptaa not made", procName, NULL);
+    ptaa = (PTAA *)LEPT_CALLOC(1, sizeof(PTAA));
     ptaa->n = 0;
     ptaa->nalloc = n;
     if ((ptaa->pta = (PTA **)LEPT_CALLOC(n, sizeof(PTA *))) == NULL) {
@@ -960,7 +990,7 @@ PTAA  *ptaa;
 /*!
  * \brief   ptaaDestroy()
  *
- * \param[in,out]   pptaa to be nulled
+ * \param[in,out]   pptaa   will be set to null before returning
  * \return  void
  */
 void
@@ -982,10 +1012,8 @@ PTAA    *ptaa;
     for (i = 0; i < ptaa->n; i++)
         ptaDestroy(&ptaa->pta[i]);
     LEPT_FREE(ptaa->pta);
-
     LEPT_FREE(ptaa);
     *pptaa = NULL;
-    return;
 }
 
 
@@ -996,8 +1024,8 @@ PTAA    *ptaa;
  * \brief   ptaaAddPta()
  *
  * \param[in]    ptaa
- * \param[in]    pta  to be added
- * \param[in]    copyflag  L_INSERT, L_COPY, L_CLONE
+ * \param[in]    pta         to be added
+ * \param[in]    copyflag    L_INSERT, L_COPY, L_CLONE
  * \return  0 if OK, 1 on error
  */
 l_ok
@@ -1028,11 +1056,15 @@ PTA     *ptac;
     }
 
     n = ptaaGetCount(ptaa);
-    if (n >= ptaa->nalloc)
-        ptaaExtendArray(ptaa);
+    if (n >= ptaa->nalloc) {
+        if (ptaaExtendArray(ptaa)) {
+            ptaDestroy(&ptac);
+            return ERROR_INT("extension failed", procName, 1);
+        }
+    }
+
     ptaa->pta[n] = ptac;
     ptaa->n++;
-
     return 0;
 }
 
@@ -1042,21 +1074,33 @@ PTA     *ptac;
  *
  * \param[in]    ptaa
  * \return  0 if OK, 1 on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) This doubles the pta ptr array size.
+ *      (2) The max number of pta ptrs is 10M.
+ * </pre>
+ *
  */
 static l_int32
 ptaaExtendArray(PTAA  *ptaa)
 {
+size_t  oldsize, newsize;
+
     PROCNAME("ptaaExtendArray");
 
     if (!ptaa)
         return ERROR_INT("ptaa not defined", procName, 1);
+    oldsize = ptaa->nalloc * sizeof(PTA *);
+    newsize = 2 * oldsize;
+    if (newsize > 8 * MaxPtrArraySize)
+        return ERROR_INT("newsize > 80 MB; too large", procName, 1);
 
     if ((ptaa->pta = (PTA **)reallocNew((void **)&ptaa->pta,
-                             sizeof(PTA *) * ptaa->nalloc,
-                             2 * sizeof(PTA *) * ptaa->nalloc)) == NULL)
+                                        oldsize, newsize)) == NULL)
         return ERROR_INT("new ptr array not returned", procName, 1);
 
-    ptaa->nalloc = 2 * ptaa->nalloc;
+    ptaa->nalloc *= 2;
     return 0;
 }
 
@@ -1086,8 +1130,8 @@ ptaaGetCount(PTAA  *ptaa)
  * \brief   ptaaGetPta()
  *
  * \param[in]    ptaa
- * \param[in]    index  to the i-th pta
- * \param[in]    accessflag  L_COPY or L_CLONE
+ * \param[in]    index         to the i-th pta
+ * \param[in]    accessflag    L_COPY or L_CLONE
  * \return  pta, or NULL on error
  */
 PTA *
@@ -1115,10 +1159,10 @@ ptaaGetPta(PTAA    *ptaa,
  * \brief   ptaaGetPt()
  *
  * \param[in]    ptaa
- * \param[in]    ipta  to the i-th pta
- * \param[in]    jpt index to the j-th pt in the pta
- * \param[out]   px [optional] float x value
- * \param[out]   py [optional] float y value
+ * \param[in]    ipta   to the i-th pta
+ * \param[in]    jpt    index to the j-th pt in the pta
+ * \param[out]   px     [optional] float x value
+ * \param[out]   py     [optional] float y value
  * \return  0 if OK; 1 on error
  */
 l_ok
@@ -1157,8 +1201,8 @@ PTA  *pta;
 /*!
  * \brief   ptaaInitFull()
  *
- * \param[in]    ptaa can have non-null ptrs in the ptr array
- * \param[in]    pta to be replicated into the entire ptr array
+ * \param[in]    ptaa    can have non-null ptrs in the ptr array
+ * \param[in]    pta     to be replicated into the entire ptr array
  * \return  0 if OK; 1 on error
  */
 l_ok
@@ -1189,15 +1233,15 @@ PTA     *ptat;
  * \brief   ptaaReplacePta()
  *
  * \param[in]    ptaa
- * \param[in]    index  to the index-th pta
- * \param[in]    pta insert and replace any existing one
+ * \param[in]    index   to the index-th pta
+ * \param[in]    pta     insert and replace any existing one
  * \return  0 if OK, 1 on error
  *
  * <pre>
  * Notes:
  *      (1) Any existing pta is destroyed, and the input one
  *          is inserted in its place.
- *      (2) If the index is invalid, return 1 (error)
+ *      (2) If %index is invalid, return 1 (error)
  * </pre>
  */
 l_ok
@@ -1227,8 +1271,8 @@ l_int32  n;
  * \brief   ptaaAddPt()
  *
  * \param[in]    ptaa
- * \param[in]    ipta  to the i-th pta
- * \param[in]    x,y point coordinates
+ * \param[in]    ipta   to the i-th pta
+ * \param[in]    x,y    point coordinates
  * \return  0 if OK; 1 on error
  */
 l_ok
@@ -1330,8 +1374,13 @@ PTAA  *ptaa;
 /*!
  * \brief   ptaaReadStream()
  *
- * \param[in]    fp file stream
+ * \param[in]    fp    file stream
  * \return  ptaa, or NULL on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) It is OK for the ptaa to be empty (n == 0).
+ * </pre>
  */
 PTAA *
 ptaaReadStream(FILE  *fp)
@@ -1351,6 +1400,11 @@ PTAA    *ptaa;
         return (PTAA *)ERROR_PTR("invalid ptaa version", procName, NULL);
     if (fscanf(fp, "Number of Pta = %d\n", &n) != 1)
         return (PTAA *)ERROR_PTR("not a ptaa file", procName, NULL);
+    if (n < 0)
+        return (PTAA *)ERROR_PTR("num pta ptrs <= 0", procName, NULL);
+    if (n > MaxPtrArraySize)
+        return (PTAA *)ERROR_PTR("too many pta ptrs", procName, NULL);
+    if (n == 0) L_INFO("the ptaa is empty\n", procName);
 
     if ((ptaa = ptaaCreate(n)) == NULL)
         return (PTAA *)ERROR_PTR("ptaa not made", procName, NULL);
@@ -1369,8 +1423,8 @@ PTAA    *ptaa;
 /*!
  * \brief   ptaaReadMem()
  *
- * \param[in]    data  serialization in ascii
- * \param[in]    size  of data in bytes; can use strlen to get it
+ * \param[in]    data    serialization in ascii
+ * \param[in]    size    of data in bytes; can use strlen to get it
  * \return  ptaa, or NULL on error
  */
 PTAA *
@@ -1399,7 +1453,7 @@ PTAA  *ptaa;
  *
  * \param[in]    filename
  * \param[in]    ptaa
- * \param[in]    type  0 for float values; 1 for integer values
+ * \param[in]    type      0 for float values; 1 for integer values
  * \return  0 if OK, 1 on error
  *
  * <pre>
@@ -1432,7 +1486,7 @@ ptaaWriteDebug(const char  *filename,
  *
  * \param[in]    filename
  * \param[in]    ptaa
- * \param[in]    type  0 for float values; 1 for integer values
+ * \param[in]    type      0 for float values; 1 for integer values
  * \return  0 if OK, 1 on error
  */
 l_ok
@@ -1463,9 +1517,9 @@ FILE    *fp;
 /*!
  * \brief   ptaaWriteStream()
  *
- * \param[in]    fp file stream
+ * \param[in]    fp      file stream
  * \param[in]    ptaa
- * \param[in]    type  0 for float values; 1 for integer values
+ * \param[in]    type    0 for float values; 1 for integer values
  * \return  0 if OK; 1 on error
  */
 l_ok
@@ -1499,15 +1553,15 @@ PTA     *pta;
 /*!
  * \brief   ptaaWriteMem()
  *
- * \param[out]   pdata data of serialized ptaa; ascii
- * \param[out]   psize size of returned data
+ * \param[out]   pdata    data of serialized ptaa; ascii
+ * \param[out]   psize    size of returned data
  * \param[in]    ptaa
- * \param[in]    type  0 for float values; 1 for integer values
+ * \param[in]    type     0 for float values; 1 for integer values
  * \return  0 if OK, 1 on error
  *
  * <pre>
  * Notes:
- *      (1) Serializes a ptaa in memory and puts the result in a buffer.
+ *      (1) Serializes %ptaa in memory and puts the result in a buffer.
  * </pre>
  */
 l_ok
@@ -1550,4 +1604,3 @@ FILE    *fp;
     fclose(fp);
     return ret;
 }
-

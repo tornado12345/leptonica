@@ -43,6 +43,10 @@
  *    Note: this program is Unix only; it will not compile under cygwin.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #include "allheaders.h"
 
@@ -88,15 +92,15 @@ static char  mainName[] = "maketile";
             continue;
         }
         if (pixGetHeight(pix) > 5000) {
-            fprintf(stderr, "%s too tall\n", fname);
+            lept_stderr("%s too tall\n", fname);
             continue;
         }
         pixt = pixScale(pix, scale, scale);
         pixaAddPix(pixa, pixt, L_INSERT);
         pixDestroy(&pix);
-/*        fprintf(stderr, "%d..", i); */
+/*        lept_stderr("%d..", i); */
     }
-    fprintf(stderr, "\n");
+    lept_stderr("\n");
 
         /* tile them */
     pixd = pixaDisplayTiled(pixa, width, background, 15);

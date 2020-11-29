@@ -41,6 +41,10 @@
  *   * test RGB histogram and counting functions in pix4.c
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
 static L_AMAP *BuildMapHistogram(PIX *pix, l_int32 factor, l_int32 print);
@@ -57,7 +61,7 @@ static void TestMapIterator5(L_AMAP *m, l_int32  print);
 l_int32 main(int    argc,
              char **argv)
 {
-l_int32    i, n, w, h, val;
+l_int32    i, n, w, h, ncolors;
 l_uint32   val32;
 L_AMAP    *m;
 NUMA      *na;
@@ -71,7 +75,7 @@ RB_TYPE   *pval;
 
     pix = pixRead("weasel8.240c.png");
     pixGetDimensions(pix, &w, &h, NULL);
-    fprintf(stderr, "Image area in pixels: %d\n", w * h);
+    lept_stderr("Image area in pixels: %d\n", w * h);
     cmap = pixGetColormap(pix);
 
         /* Build the histogram, stored in a map.  Then compute
@@ -128,7 +132,7 @@ RB_TYPE   *pval;
         key.utype = val32;
         pval = l_amapFind(m, key);
         if (pval && (i != pval->itype))
-            fprintf(stderr, "i = %d != val = %llx\n", i, pval->itype);
+            lept_stderr("i = %d != val = %llx\n", i, pval->itype);
     }
     l_amapDestroy(&m);
     pixDestroy(&pix);
@@ -137,7 +141,10 @@ RB_TYPE   *pval;
     pix = pixRead("wyom.jpg");
     m = pixGetColorAmapHistogram(pix, 1);
     DisplayMapRGBHistogram(m, "/tmp/lept/map/map4");
-    fprintf(stderr, " Using pixCountRGBColors: %d\n", pixCountRGBColors(pix));
+    pixNumColors(pix, 1, &ncolors);
+    lept_stderr(" Using pixNumColors: %d\n", ncolors);
+    pixCountRGBColors(pix, 1, &ncolors);
+    lept_stderr(" Using pixCountRGBColors: %d\n", ncolors);
     l_amapDestroy(&m);
     pixDestroy(&pix);
 
@@ -157,7 +164,7 @@ PIXCMAP   *cmap;
 RB_TYPE    key, value;
 RB_TYPE   *pval;
 
-    fprintf(stderr, "\n --------------- Begin building map --------------\n");
+    lept_stderr("\n --------------- Begin building map --------------\n");
     m = l_amapCreate(L_UINT_TYPE);
     data = pixGetData(pix);
     wpl = pixGetWpl(pix);
@@ -174,17 +181,15 @@ RB_TYPE   *pval;
                 value.itype = 1;
             else
                 value.itype = 1 + pval->itype;
-            if (print) {
-                fprintf(stderr, "key = %llx, val = %lld\n",
-                        key.utype, value.itype);
-            }
+            if (print)
+                lept_stderr("key = %llx, val = %lld\n", key.utype, value.itype);
             l_amapInsert(m, key, value);
         }
     }
-    fprintf(stderr, "Size: %d\n", l_amapSize(m));
+    lept_stderr("Size: %d\n", l_amapSize(m));
     if (print)
         l_rbtreePrint(stderr, m);
-    fprintf(stderr, " ----------- End Building map -----------------\n");
+    lept_stderr(" ----------- End Building map -----------------\n");
 
     return m;
 }
@@ -226,11 +231,11 @@ DisplayMapRGBHistogram(L_AMAP      *m,
 {
 char          buf[128];
 l_int32       ncolors, npix, ival, maxn, maxn2;
-l_uint32      val32, maxcolor;
+l_uint32      maxcolor;
 L_AMAP_NODE  *n;
 NUMA         *na;
 
-    fprintf(stderr, "\n --------------- Display RGB histogram ------------\n");
+    lept_stderr("\n --------------- Display RGB histogram ------------\n");
     na = numaCreate(0);
     ncolors = npix = 0;
     maxn = 0;
@@ -247,11 +252,11 @@ NUMA         *na;
         npix += ival;
         n = l_amapGetNext(n);
     }
-    fprintf(stderr, " Num colors = %d, Num pixels = %d\n", ncolors, npix);
-    fprintf(stderr, " Color %x has count %d\n", maxcolor, maxn);
+    lept_stderr(" Num colors = %d, Num pixels = %d\n", ncolors, npix);
+    lept_stderr(" Color %x has count %d\n", maxcolor, maxn);
     maxn2 = amapGetCountForColor(m, maxcolor);
     if (maxn != maxn2)
-        fprintf(stderr, " Error: maxn2 = %d; not equal to %d\n", maxn, maxn2);
+        lept_stderr(" Error: maxn2 = %d; not equal to %d\n", maxn, maxn2);
     gplotSimple1(na, GPLOT_PNG, rootname, NULL);
     snprintf(buf, sizeof(buf), "%s.png", rootname);
     l_fileDisplay(buf, 1400, 0, 1.0);
@@ -270,19 +275,19 @@ L_AMAP_NODE  *n;
     n = l_amapGetFirst(m);
     count = 0;
     npix = 0;
-    fprintf(stderr, "\n ---------- Begin forward iter listing -----------\n");
+    lept_stderr("\n ---------- Begin forward iter listing -----------\n");
     while (n) {
         count++;
         ukey = n->key.utype;
         ival = n->value.itype;
         npix += ival;
         if (print)
-            fprintf(stderr, "key = %x, val = %d\n", ukey, ival);
+            lept_stderr("key = %x, val = %d\n", ukey, ival);
         n = l_amapGetNext(n);
     }
-    fprintf(stderr, "Count from iterator: %d\n", count);
-    fprintf(stderr, "Number of pixels: %d\n", npix);
-    fprintf(stderr, " ------------ End forward iter listing -----------\n");
+    lept_stderr("Count from iterator: %d\n", count);
+    lept_stderr("Number of pixels: %d\n", npix);
+    lept_stderr(" ------------ End forward iter listing -----------\n");
     return;
 }
 
@@ -297,19 +302,19 @@ L_AMAP_NODE  *n;
     n = l_amapGetLast(m);
     count = 0;
     npix = 0;
-    fprintf(stderr, "\n ---------- Begin reverse iter listing -----------\n");
+    lept_stderr("\n ---------- Begin reverse iter listing -----------\n");
     while (n) {
         count++;
         ukey = n->key.utype;
         ival = n->value.itype;
         npix += ival;
         if (print)
-            fprintf(stderr, "key = %x, val = %d\n", ukey, ival);
+            lept_stderr("key = %x, val = %d\n", ukey, ival);
         n = l_amapGetPrev(n);
     }
-    fprintf(stderr, "Count from iterator: %d\n", count);
-    fprintf(stderr, "Number of pixels: %d\n", npix);
-    fprintf(stderr, " ------------ End reverse iter listing -----------\n");
+    lept_stderr("Count from iterator: %d\n", count);
+    lept_stderr("Number of pixels: %d\n", npix);
+    lept_stderr(" ------------ End reverse iter listing -----------\n");
     return;
 }
 
@@ -324,7 +329,7 @@ L_AMAP_NODE  *n, *nn;
     n = l_amapGetFirst(m);
     count = 0;
     npix = 0;
-    fprintf(stderr, "\n ------ Begin forward iter; delete tree ---------\n");
+    lept_stderr("\n ------ Begin forward iter; delete tree ---------\n");
     while (n) {
         nn = l_amapGetNext(n);
         count++;
@@ -332,13 +337,13 @@ L_AMAP_NODE  *n, *nn;
         ival = n->value.itype;
         npix += ival;
         if (print)
-            fprintf(stderr, "key = %x, val = %d\n", ukey, ival);
+            lept_stderr("key = %x, val = %d\n", ukey, ival);
         l_amapDelete(m, n->key);
         n = nn;
     }
-    fprintf(stderr, "Count from iterator: %d\n", count);
-    fprintf(stderr, "Number of pixels: %d\n", npix);
-    fprintf(stderr, " ------ End forward iter; delete tree ---------\n");
+    lept_stderr("Count from iterator: %d\n", count);
+    lept_stderr("Number of pixels: %d\n", npix);
+    lept_stderr(" ------ End forward iter; delete tree ---------\n");
     return;
 }
 
@@ -353,7 +358,7 @@ L_AMAP_NODE  *n, *np;
     n = l_amapGetLast(m);
     count = 0;
     npix = 0;
-    fprintf(stderr, "\n ------- Begin reverse iter; delete tree --------\n");
+    lept_stderr("\n ------- Begin reverse iter; delete tree --------\n");
     while (n) {
         np = l_amapGetPrev(n);
         count++;
@@ -361,13 +366,13 @@ L_AMAP_NODE  *n, *np;
         ival = n->value.itype;
         npix += ival;
         if (print)
-            fprintf(stderr, "key = %x, val = %d\n", ukey, ival);
+            lept_stderr("key = %x, val = %d\n", ukey, ival);
         l_amapDelete(m, n->key);
         n = np;
     }
-    fprintf(stderr, "Count from iterator: %d\n", count);
-    fprintf(stderr, "Number of pixels: %d\n", npix);
-    fprintf(stderr, " ------- End reverse iter; delete tree --------\n");
+    lept_stderr("Count from iterator: %d\n", count);
+    lept_stderr("Number of pixels: %d\n", npix);
+    lept_stderr(" ------- End reverse iter; delete tree --------\n");
     return;
 }
 
@@ -378,12 +383,12 @@ TestMapIterator5(L_AMAP  *m,
 l_int32       count, npix, ival;
 l_uint32      ukey;
 L_AMAP       *m2;
-L_AMAP_NODE  *n, *np, *n2;
+L_AMAP_NODE  *n, *np;
 
     m2 = l_amapCreate(L_UINT_TYPE);
     n = l_amapGetLast(m);
     count = npix = 0;
-    fprintf(stderr, "\n ------- Begin reverse iter; rebuild tree --------\n");
+    lept_stderr("\n ------- Begin reverse iter; rebuild tree --------\n");
     while (n) {
         np = l_amapGetPrev(n);
         count++;
@@ -392,14 +397,14 @@ L_AMAP_NODE  *n, *np, *n2;
         l_amapInsert(m2, n->key, n->value);
         npix += ival;
         if (print)
-            fprintf(stderr, "key = %x, val = %d\n", ukey, ival);
+            lept_stderr("key = %x, val = %d\n", ukey, ival);
         l_amapDelete(m, n->key);
         n = np;
     }
     m->root = m2->root;
     lept_free(m2);
-    fprintf(stderr, "Count from iterator: %d\n", count);
-    fprintf(stderr, "Number of pixels: %d\n", npix);
+    lept_stderr("Count from iterator: %d\n", count);
+    lept_stderr("Number of pixels: %d\n", npix);
     count = npix = 0;
     n = l_amapGetLast(m);
     while (n) {
@@ -409,12 +414,12 @@ L_AMAP_NODE  *n, *np, *n2;
         ival = n->value.itype;
         npix += ival;
         if (print)
-            fprintf(stderr, "key = %x, val = %d\n", ukey, ival);
+            lept_stderr("key = %x, val = %d\n", ukey, ival);
         n = np;
     }
-    fprintf(stderr, "Count from iterator: %d\n", count);
-    fprintf(stderr, "Number of pixels: %d\n", npix);
-    fprintf(stderr, " ------- End reverse iter; rebuild tree --------\n");
+    lept_stderr("Count from iterator: %d\n", count);
+    lept_stderr("Number of pixels: %d\n", npix);
+    lept_stderr(" ------- End reverse iter; rebuild tree --------\n");
     return;
 }
 

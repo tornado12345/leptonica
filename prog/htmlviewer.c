@@ -46,6 +46,10 @@
  *            /tmp/lept/lion-out/lion-links.html   (html file of links)
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #include "allheaders.h"
 
@@ -186,9 +190,9 @@ SARRAY    *safiles, *sathumbs, *saviews, *sahtml, *salink;
     for (i = 0; i < nfiles; i++) {
         fname = sarrayGetString(safiles, i, L_NOCOPY);
         fullname = genPathname(dirin, fname);
-        fprintf(stderr, "name: %s\n", fullname);
+        lept_stderr("name: %s\n", fullname);
         if ((pix = pixRead(fullname)) == NULL) {
-            fprintf(stderr, "file %s not a readable image\n", fullname);
+            lept_stderr("file %s not a readable image\n", fullname);
             lept_free(fullname);
             continue;
         }
@@ -235,15 +239,15 @@ SARRAY    *safiles, *sathumbs, *saviews, *sahtml, *salink;
     sarrayAddString(sahtml, framestring, L_COPY);
     shtml = sarrayToString(sahtml, 1);
     l_binaryWrite(mainname, "w", shtml, strlen(shtml));
-    fprintf(stderr, "******************************************\n"
-                    "Writing html file: %s\n"
-                    "******************************************\n", mainname);
+    lept_stderr("******************************************\n"
+                "Writing html file: %s\n"
+                "******************************************\n", mainname);
     lept_free(shtml);
     lept_free(mainname);
 
         /* Generate the link html file */
     nimages = sarrayGetCount(saviews);
-    fprintf(stderr, "num. images = %d\n", nimages);
+    lept_stderr("num. images = %d\n", nimages);
     salink = sarrayCreate(0);
     for (i = 0; i < nimages; i++) {
         viewfile = sarrayGetString(saviews, i, L_NOCOPY);

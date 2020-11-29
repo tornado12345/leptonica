@@ -72,7 +72,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#include "config_auto.h"
+#include <config_auto.h>
 #endif  /* HAVE_CONFIG_H */
 
 #include <string.h>
@@ -406,7 +406,7 @@ PIXCMAP  *cmap;
     if (pix) {
         pixSetInputFormat(pix, format);
         if ((cmap = pixGetColormap(pix))) {
-            pixcmapIsValid(cmap, &valid);
+            pixcmapIsValid(cmap, pix, &valid);
             if (!valid) {
                 pixDestroy(&pix);
                 return (PIX *)ERROR_PTR("invalid colormap", procName, NULL);
@@ -616,7 +616,7 @@ l_ok
 findFileFormatStream(FILE     *fp,
                      l_int32  *pformat)
 {
-l_uint8  firstbytes[12];
+l_uint8  firstbytes[13];
 l_int32  format;
 
     PROCNAME("findFileFormatStream");
@@ -633,6 +633,7 @@ l_int32  format;
 
     if (fread(&firstbytes, 1, 12, fp) != 12)
         return ERROR_INT("failed to read first 12 bytes of file", procName, 1);
+    firstbytes[12] = 0;
     rewind(fp);
 
     findFileFormatBuffer(firstbytes, &format);
@@ -929,12 +930,13 @@ PIXCMAP  *cmap;
             format = IFF_TIFF_G4;
         pixSetInputFormat(pix, format);
         if ((cmap = pixGetColormap(pix))) {
-            pixcmapIsValid(cmap, &valid);
+            pixcmapIsValid(cmap, pix, &valid);
             if (!valid) {
                 pixDestroy(&pix);
                 return (PIX *)ERROR_PTR("invalid colormap", procName, NULL);
             }
         }
+        pixSetPadBits(pix, 0);
     }
     return pix;
 }
@@ -961,7 +963,7 @@ PIXCMAP  *cmap;
  *          png, it requires less than 30 bytes, but for jpeg it can
  *          require most of the compressed file.  In practice, the data
  *          is typically the entire compressed file in memory.
- *      (3) findFileFormatBuffer() requires up to 8 bytes to decide on
+ *      (3) findFileFormatBuffer() requires up to 12 bytes to decide on
  *          the format, which we require.
  * </pre>
  */
@@ -990,8 +992,8 @@ PIX     *pix;
     iscmap = 0;  /* init to false */
     if (!data)
         return ERROR_INT("data not defined", procName, 1);
-    if (size < 8)
-        return ERROR_INT("size < 8", procName, 1);
+    if (size < 12)
+        return ERROR_INT("size < 12", procName, 1);
 
     findFileFormatBuffer(data, &format);
 
@@ -1068,7 +1070,7 @@ PIX     *pix;
         return ERROR_INT("Pdf reading is not supported\n", procName, 1);
 
     case IFF_SPIX:
-        ret = sreadHeaderSpix((l_uint32 *)data, &w, &h, &bps,
+        ret = sreadHeaderSpix((l_uint32 *)data, size, &w, &h, &bps,
                                &spp, &iscmap);
         if (ret)
             return ERROR_INT( "pnm: no header info returned", procName, 1);
@@ -1607,7 +1609,7 @@ PIXCMAP   *cmap;
         pixCompareRGB(pix1, pix2, L_COMPARE_ABS_DIFF, 0, NULL, &diff,
                       NULL, NULL);
     }
-    fprintf(stderr, "diff = %7.3f\n", diff);
+    lept_stderr("diff = %7.3f\n", diff);
     if (diff > 7.0) {
         L_INFO("   **** bad jp2k image: d = %d, diff = %5.2f ****\n",
                procName, depth, diff);

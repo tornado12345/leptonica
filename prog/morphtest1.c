@@ -31,6 +31,10 @@
  *   - Example repository of binary morph operations
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
 #define   NTIMES         100
@@ -69,14 +73,14 @@ static char  mainName[] = "morphtest1";
     startTimer();
     for (i = 0; i < NTIMES; i++)  {
         pixDilate(pixd, pixs, sel);
-/*        if ((i % 10) == 0) fprintf(stderr, "%d iters\n", i); */
+/*        if ((i % 10) == 0) lept_stderr("%d iters\n", i); */
     }
     cputime = stopTimer();
         /* Get the elementary pixel operations/sec */
     epo = BASIC_OPS * SEL_SIZE * NTIMES * IMAGE_SIZE /(cputime * CPU_SPEED);
 
-    fprintf(stderr, "Time: %7.3f sec\n", cputime);
-    fprintf(stderr, "Speed: %7.3f epo/cycle\n", epo);
+    lept_stderr("Time: %7.3f sec\n", cputime);
+    lept_stderr("Speed: %7.3f epo/cycle\n", epo);
     pixWrite(fileout, pixd, IFF_PNG);
     pixDestroy(&pixd);
 #endif

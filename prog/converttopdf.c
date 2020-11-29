@@ -48,6 +48,10 @@
  *    If you want something more general, use convertfilestopdf.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #include "allheaders.h"
 
@@ -58,7 +62,7 @@ l_int32  ret;
 char    *dirin, *substr, *fileout;
 
     if (argc != 3 && argc != 4) {
-        fprintf(stderr,
+        lept_stderr(
             " Syntax: converttopdf dir [substr] fileout\n"
             "         substr:  Leave this out to bundle all files\n"
             "         fileout:  Output pdf file\n");

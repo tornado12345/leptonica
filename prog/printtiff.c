@@ -52,6 +52,10 @@
  *   ***************************************************************
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
 #define   TEMP_PS       "print_tiff.ps"   /* in the temp directory */
@@ -71,7 +75,7 @@ static char  mainName[] = "printtiff";
     if (argc == 3)
         printer = argv[2];
 
-    fprintf(stderr,
+    lept_stderr(
          "\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
          "   Warning: this program should only be used for testing,\n"
          "     and not in a production environment, because of a\n"

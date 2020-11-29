@@ -100,7 +100,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#include "config_auto.h"
+#include <config_auto.h>
 #endif  /* HAVE_CONFIG_H */
 
 #include <string.h>
@@ -593,7 +593,7 @@ opj_image_t       *image = NULL;
     parameters.cp_fixed_alloc =  0;
     parameters.tcp_distoratio[0] = snr;
     parameters.tcp_numlayers = 1;
-    parameters.numresolution = nlevels + 1;
+    parameters.numresolution = nlevels;
 
         /* Create comment for codestream */
     if (parameters.cp_comment == NULL) {

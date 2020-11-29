@@ -49,6 +49,10 @@
  *      require lossless, but this is very expensive and not recommended.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #include "allheaders.h"
 
@@ -61,7 +65,7 @@ l_float32    scalefactor;
 static char  mainName[] = "convertfilestopdf";
 
     if (argc != 9) {
-        fprintf(stderr,
+        lept_stderr(
             " Syntax: convertfilestopdf dirin substr res"
             " scalefactor encoding_type quality title fileout\n"
             "         dirin:  input directory for image files\n"

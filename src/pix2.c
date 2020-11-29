@@ -41,6 +41,7 @@
  *           l_int32     pixSetPixel()
  *           l_int32     pixGetRGBPixel()
  *           l_int32     pixSetRGBPixel()
+ *           l_int32     pixSetCmapPixel()
  *           l_int32     pixGetRandomPixel()
  *           l_int32     pixClearPixel()
  *           l_int32     pixFlipPixel()
@@ -103,6 +104,9 @@
  *           l_int32     extractMinMaxComponent()
  *           l_int32     pixGetRGBLine()
  *
+ *      Raster line pixel setter
+ *           l_int32     setLineDataVal()
+ *
  *      Conversion between big and little endians
  *           PIX        *pixEndianByteSwapNew()
  *           l_int32     pixEndianByteSwap()
@@ -114,7 +118,10 @@
  *           l_int32     pixGetRasterData()
  *
  *      Test alpha component opaqueness
- *           l_int32     pixAlphaIsOpaque
+ *           l_int32     pixAlphaIsOpaque()
+ *
+ *      Infer resolution from image size
+ *           l_int32     pixInferResolution()
  *
  *      Setup helpers for 8 bpp byte processing
  *           l_uint8   **pixSetupByteProcessing()
@@ -125,6 +132,9 @@
  * </pre>
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
 
 #include <string.h>
 #include "allheaders.h"
@@ -310,9 +320,11 @@ l_uint32  *line, *data;
  * \param[out]   pbval  [optional] blue component
  * \return  0 if OK; 1 or 2 on error
  *
+ * <pre>
  * Notes:
  *      (1) If the point is outside the image, this returns an error (2),
  *          with 0 in %pval.  To avoid spamming output, it fails silently.
+ * </pre>
  */
 l_ok
 pixGetRGBPixel(PIX      *pix,
@@ -360,9 +372,11 @@ l_uint32  *data, *ppixel;
  * \param[in]    bval   blue component
  * \return  0 if OK; 1 or 2 on error
  *
+ * <pre>
  * Notes:
  *      (1) If the point is outside the image, this returns an error (2),
- *          with 0 in %pval.  To avoid spamming output, it fails silently.
+ *          and to avoid spamming output, it fails silently.
+ * </pre>
  */
 l_ok
 pixSetRGBPixel(PIX     *pix,
@@ -391,6 +405,67 @@ l_uint32  *data, *line;
     line = data + y * wpl;
     composeRGBPixel(rval, gval, bval, &pixel);
     *(line + x) = pixel;
+    return 0;
+}
+
+
+/*!
+ * \brief   pixSetCmapPixel()
+ *
+ * \param[in]    pix    2, 4 or 8 bpp, colormapped
+ * \param[in]    x,y    pixel coords
+ * \param[in]    rval   red component
+ * \param[in]    gval   green component
+ * \param[in]    bval   blue component
+ * \return  0 if OK; 1 or 2 on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) If the point is outside the image, this returns an error (2),
+ *          and to avoid spamming output, it fails silently.
+ *      (2) - If the color already exists, use it.
+ *          - If the color does not exist in the colormap, it is added
+ *            if possible.
+ *          - If there is not room in the colormap for the new color:
+ *            * if d < 8, return 2 with a warning.
+ *            * if d == 8, find and use the nearest color.
+ *      (3) Note that this operation scales with the number of colors
+ *          in the colormap, and therefore can be very expensive if an
+ *          attempt is made to set many pixels.  (In that case, it should
+ *          be implemented with a map:rgb-->index for efficiency.)
+ *          This is best used with very small images.
+ * </pre>
+ */
+l_ok
+pixSetCmapPixel(PIX     *pix,
+                l_int32  x,
+                l_int32  y,
+                l_int32  rval,
+                l_int32  gval,
+                l_int32  bval)
+{
+l_int32   w, h, d, index;
+PIXCMAP  *cmap;
+
+    PROCNAME("pixSetCmapPixel");
+
+    if (!pix)
+        return ERROR_INT("pix not defined", procName, 1);
+    if ((cmap = pixGetColormap(pix)) == NULL)
+        return ERROR_INT("pix is not colormapped", procName, 1);
+    pixGetDimensions(pix, &w, &h, &d);
+    if (d != 2 && d != 4 && d != 8)
+        return ERROR_INT("pix depth not 2, 4 or 8", procName, 1);
+    if (x < 0 || x >= w || y < 0 || y >= h)
+        return 2;
+
+    if (d == 8) {  /* always add */
+        pixcmapAddNearestColor(cmap, rval, gval, bval, &index);
+    } else {  /* d < 8 */
+        if (pixcmapAddNewColor(cmap, rval, gval, bval, &index) == 2)
+            return ERROR_INT("colormap is full", procName, 2);
+    }
+    pixSetPixel(pix, x, y, index);
     return 0;
 }
 
@@ -455,9 +530,11 @@ PIXCMAP  *cmap;
  * \param[in]    x,y   pixel coords
  * \return  0 if OK; 1 or 2 on error.
  *
+ * <pre>
  * Notes:
  *      (1) If the point is outside the image, this returns an error (2),
  *          with 0 in %pval.  To avoid spamming output, it fails silently.
+ * </pre>
  */
 l_ok
 pixClearPixel(PIX     *pix,
@@ -515,9 +592,11 @@ l_uint32  *line, *data;
  * \param[in]    x,y   pixel coords
  * \return  0 if OK; 1 or 2 on error
  *
+ * <pre>
  * Notes:
  *      (1) If the point is outside the image, this returns an error (2),
  *          with 0 in %pval.  To avoid spamming output, it fails silently.
+ * </pre>
  */
 l_ok
 pixFlipPixel(PIX     *pix,
@@ -626,10 +705,8 @@ setPixelLow(l_uint32  *line,
         line[x] = val;
         break;
     default:
-        fprintf(stderr, "illegal depth in setPixelLow()\n");
+        lept_stderr("illegal depth in setPixelLow()\n");
     }
-
-    return;
 }
 
 
@@ -716,8 +793,7 @@ pixClearAll(PIX  *pix)
     if (!pix)
         return ERROR_INT("pix not defined", procName, 1);
 
-    pixRasterop(pix, 0, 0, pixGetWidth(pix), pixGetHeight(pix),
-                PIX_CLR, NULL, 0, 0);
+    memset(pix->data, 0, 4LL * pix->wpl * pix->h);
     return 0;
 }
 
@@ -753,8 +829,7 @@ PIXCMAP  *cmap;
             return ERROR_INT("cmap entry does not exist", procName, 1);
     }
 
-    pixRasterop(pix, 0, 0, pixGetWidth(pix), pixGetHeight(pix),
-                PIX_SET, NULL, 0, 0);
+    memset(pix->data, 0xff, 4LL * pix->wpl * pix->h);
     return 0;
 }
 
@@ -1859,7 +1934,7 @@ PIX     *pixd;
     pixGetDimensions(pixs, &ws, &hs, &d);
     wd = ws + left + right;
     hd = hs + top + bot;
-    if ((pixd = pixCreateNoInit(wd, hd, d)) == NULL)
+    if ((pixd = pixCreate(wd, hd, d)) == NULL)
         return (PIX *)ERROR_PTR("pixd not made", procName, NULL);
     pixCopyResolution(pixd, pixs);
     pixCopyColormap(pixd, pixs);
@@ -1938,7 +2013,7 @@ PIX     *pixd;
         return (PIX *)ERROR_PTR("width must be > 0", procName, NULL);
     if (hd <= 0)
         return (PIX *)ERROR_PTR("height must be > 0", procName, NULL);
-    if ((pixd = pixCreateNoInit(wd, hd, d)) == NULL)
+    if ((pixd = pixCreate(wd, hd, d)) == NULL)
         return (PIX *)ERROR_PTR("pixd not made", procName, NULL);
     pixCopyResolution(pixd, pixs);
     pixCopySpp(pixd, pixs);
@@ -2525,7 +2600,7 @@ PIX *
 pixGetRGBComponentCmap(PIX     *pixs,
                        l_int32  comp)
 {
-l_int32     i, j, w, h, val, index;
+l_int32     i, j, w, h, val, index, valid;
 l_int32     wplc, wpld;
 l_uint32   *linec, *lined;
 l_uint32   *datac, *datad;
@@ -2549,6 +2624,11 @@ RGBA_QUAD  *cta;
         pixc = pixClone(pixs);
     else
         pixc = pixConvertTo8(pixs, TRUE);
+    pixcmapIsValid(cmap, pixc, &valid);
+    if (!valid) {
+        pixDestroy(&pixc);
+        return (PIX *)ERROR_PTR("invalid colormap", procName, NULL);
+    }
 
     pixGetDimensions(pixs, &w, &h, NULL);
     if ((pixd = pixCreateNoInit(w, h, 8)) == NULL) {
@@ -2745,7 +2825,6 @@ extractRGBValues(l_uint32  pixel,
     if (prval) *prval = (pixel >> L_RED_SHIFT) & 0xff;
     if (pgval) *pgval = (pixel >> L_GREEN_SHIFT) & 0xff;
     if (pbval) *pbval = (pixel >> L_BLUE_SHIFT) & 0xff;
-    return;
 }
 
 
@@ -2770,7 +2849,6 @@ extractRGBAValues(l_uint32  pixel,
     if (pgval) *pgval = (pixel >> L_GREEN_SHIFT) & 0xff;
     if (pbval) *pbval = (pixel >> L_BLUE_SHIFT) & 0xff;
     if (paval) *paval = (pixel >> L_ALPHA_SHIFT) & 0xff;
-    return;
 }
 
 
@@ -2852,6 +2930,56 @@ l_int32    wpls;
 
 
 /*-------------------------------------------------------------*
+ *                   Raster line pixel setter                  *
+ *-------------------------------------------------------------*/
+/*!
+ * \brief   setLineDataVal()
+ *
+ * \param[in]    line    ptr to first word in raster line data
+ * \param[in]    j       index of pixels into the raster line
+ * \param[in]    d       depth of the pixel
+ * \param[in]    val     pixel value to be set
+ * \return  0 if OK, 1 on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) This is a convenience function to set a pixel value in a
+ *          raster line where the depth of the image can have different
+ *          values (1, 2, 4, 8, 16 or 32).
+ * </pre>
+ */
+l_ok
+setLineDataVal(l_uint32  *line,
+               l_int32    j,
+               l_int32    d,
+               l_uint32   val)
+{
+    PROCNAME("setLineDataVal");
+
+    if (!line)
+        return ERROR_INT("line not defined", procName, 1);
+    if (j < 0)
+        return ERROR_INT("j must be >= 0", procName, 1);
+    if (d != 1 && d != 2 && d != 4 && d != 8 && d != 16 && d != 32)
+        return ERROR_INT("invalid d", procName, 1);
+
+    if (d == 1)
+        SET_DATA_BIT_VAL(line, j, val);
+    else if (d == 2)
+        SET_DATA_DIBIT(line, j, val);
+    else if (d == 4)
+        SET_DATA_QBIT(line, j, val);
+    else if (d == 8)
+        SET_DATA_BYTE(line, j, val);
+    else if (d == 16)
+        SET_DATA_TWO_BYTES(line, j, val);
+    else  /* d == 32 */
+        *(line + j) = val;
+    return 0;
+}
+
+
+/*-------------------------------------------------------------*
  *                    Pixel endian conversion                  *
  *-------------------------------------------------------------*/
 /*!
@@ -2900,7 +3028,8 @@ PIX       *pixd;
     datas = pixGetData(pixs);
     wpl = pixGetWpl(pixs);
     h = pixGetHeight(pixs);
-    pixd = pixCreateTemplate(pixs);
+    if ((pixd = pixCreateTemplate(pixs)) == NULL)
+        return (PIX *)ERROR_PTR("pixd not made", procName, NULL);
     datad = pixGetData(pixd);
     for (i = 0; i < h; i++) {
         for (j = 0; j < wpl; j++, datas++, datad++) {
@@ -3074,7 +3203,8 @@ PIX       *pixd;
     datas = pixGetData(pixs);
     wpl = pixGetWpl(pixs);
     h = pixGetHeight(pixs);
-    pixd = pixCreateTemplate(pixs);
+    if ((pixd = pixCreateTemplate(pixs)) == NULL)
+        return (PIX *)ERROR_PTR("pixd not made", procName, NULL);
     datad = pixGetData(pixd);
     for (i = 0; i < h; i++) {
         for (j = 0; j < wpl; j++, datas++, datad++) {
@@ -3222,6 +3352,56 @@ l_uint32  *rline, *rdata;  /* data in pix raster */
 
 
 /*-------------------------------------------------------------*
+ *                Infer resolution from image size             *
+ *-------------------------------------------------------------*/
+/*!
+ * \brief   pixInferResolution()
+ *
+ * \param[in]    pix
+ * \param[in]    longside    assumed max dimension, in inches
+ * \param[out]   pres        resolution (ppi)
+ * \return  0 if OK, 1 on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) This finds the resolution, assuming that the longest side
+ *          of the image is %longside.  On error, returns 300 ppi.
+ *      (2) This is useful for computing resolution for generating pdfs,
+ *          when the images are scanned from pages of known size.
+ *          There, %longside is typically about 11.0.
+ * </pre>
+ */
+l_ok
+pixInferResolution(PIX       *pix,
+                   l_float32  longside,
+                   l_int32   *pres)
+{
+l_int32  w, h, maxdim, res;
+
+    PROCNAME("pixInferResolution");
+
+    if (!pres)
+        return ERROR_INT("&res not defined", procName, 1);
+    *pres = 300;
+    if (!pix)
+        return ERROR_INT("pix not defined", procName, 1);
+    if (longside <= 0.0)
+        return ERROR_INT("longside not > 0", procName, 1);
+
+    pixGetDimensions(pix, &w, &h, NULL);
+    maxdim = L_MAX(w, h);
+    res = (l_int32)(maxdim / longside + 0.5);
+    res = L_MAX(res, 1);  /* don't let it be 0 */
+    if (res < 10)
+        L_WARNING("low inferred resolution: %d ppi\n", procName, res);
+    if (res > 10000)
+        L_WARNING("high inferred resolution: %d ppi\n", procName, res);
+    *pres = res;
+    return 0;
+}
+
+
+/*-------------------------------------------------------------*
  *                 Test alpha component opaqueness             *
  *-------------------------------------------------------------*/
 /*!
@@ -3231,8 +3411,11 @@ l_uint32  *rline, *rdata;  /* data in pix raster */
  * \param[out]   popaque   1 if spp == 4 and all alpha component
  *                         values are 255 (opaque); 0 otherwise
  * \return  0 if OK, 1 on error
- *      Notes:
- *          1) On error, opaque is returned as 0 (FALSE).
+ *
+ * <pre>
+ * Notes:
+ *      1) On error, opaque is returned as 0 (FALSE).
+ * </pre>
  */
 l_ok
 pixAlphaIsOpaque(PIX      *pix,

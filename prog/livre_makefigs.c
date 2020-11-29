@@ -33,11 +33,10 @@
  *   Scientific Publishing, Ltd, 2010.
  */
 
-#ifndef  _WIN32
-#include <unistd.h>
-#else
-#include <windows.h>   /* for Sleep() */
-#endif  /* _WIN32 */
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
 int main(int    argc,
@@ -74,33 +73,18 @@ static char  mainName[] = "livre_makefigs";
     snprintf(buf, sizeof(buf),
              "cp /tmp/lept/livre/segout.4.png /tmp/lept/livre/dia_fig5.png");
     ignore = system(buf);
-#ifndef  _WIN32
-    sleep(1);
-#else
-    Sleep(1000);
-#endif  /* _WIN32 */
 
         /* Generate Figure 6 (hmt sels for text orientation) */
     ignore = system("livre_orient");
     snprintf(buf, sizeof(buf),
              "cp /tmp/lept/livre/orient.png /tmp/lept/livre/dia_fig6.png");
     ignore = system(buf);
-#ifndef  _WIN32
-    sleep(1);
-#else
-    Sleep(1000);
-#endif  /* _WIN32 */
 
         /* Generate Figure 7 (hmt sel for fancy "Tribune") */
     ignore = system("livre_hmt 1 8");
     snprintf(buf, sizeof(buf),
              "cp /tmp/lept/livre/hmt.png /tmp/lept/livre/dia_fig7.png");
     ignore = system(buf);
-#ifndef  _WIN32
-    sleep(1);
-#else
-    Sleep(1000);
-#endif  /* _WIN32 */
 
         /* Generate Figure 8 (hmt sel for fancy "T") */
     ignore = system("livre_hmt 2 4");

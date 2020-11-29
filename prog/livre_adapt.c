@@ -32,6 +32,10 @@
  * morphological tophat.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
 int main(int    argc,
@@ -88,7 +92,7 @@ static char  mainName[] = "livre_adapt";
 
             /* Generate the output image and pdf */
     lept_mkdir("lept/livre");
-    fprintf(stderr, "Writing jpg and pdf to: /tmp/lept/livre/adapt.*\n");
+    lept_stderr("Writing jpg and pdf to: /tmp/lept/livre/adapt.*\n");
     pix1 = pixaDisplayTiledAndScaled(pixa, 8, 350, 4, 0, 25, 2);
     pixWrite("/tmp/lept/livre/adapt.jpg", pix1, IFF_DEFAULT);
     pixDisplay(pix1, 100, 100);

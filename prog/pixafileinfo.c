@@ -30,6 +30,10 @@
  *   Returns information about the images in the pixa or pixacomp file
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #include "allheaders.h"
 
@@ -70,7 +74,7 @@ static char  mainName[] = "pixafileinfo";
         snprintf(buf, sizeof(buf), "Pix(%d)", i);
         pixPrintStreamInfo(stderr, pix, buf);
         pixDestroy(&pix);
-        fprintf(stderr, "=================================\n");
+        lept_stderr("=================================\n");
     }
 
     pixaDestroy(&pixa);

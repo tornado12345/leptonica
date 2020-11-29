@@ -39,6 +39,8 @@
  *           PIXA     *pixaSelectByPerimSizeRatio()
  *           PIX      *pixSelectByAreaFraction()
  *           PIXA     *pixaSelectByAreaFraction()
+ *           PIX      *pixSelectByArea()
+ *           PIXA     *pixaSelectByArea()
  *           PIX      *pixSelectByWidthHeightRatio()
  *           PIXA     *pixaSelectByWidthHeightRatio()
  *           PIXA     *pixaSelectByNumConnComp()
@@ -89,17 +91,20 @@
  * </pre>
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #include "allheaders.h"
 
     /* For more than this number of c.c. in a binarized image of
      * semi-perimeter (w + h) about 5000 or less, the O(n) binsort
      * is faster than the O(nlogn) shellsort.  */
-static const l_int32   MIN_COMPS_FOR_BIN_SORT = 200;
+static const l_int32   MinCompsForBinSort = 200;
 
     /* Don't rotate any angle smaller than this */
-static const l_float32  MIN_ANGLE_TO_ROTATE = 0.001;  /* radians; ~0.06 deg */
-
+static const l_float32  MinAngleToRotate = 0.001;  /* radians; ~0.06 deg */
 
 /*---------------------------------------------------------------------*
  *                                Filters                              *
@@ -130,6 +135,7 @@ static const l_float32  MIN_ANGLE_TO_ROTATE = 0.001;  /* radians; ~0.06 deg */
  *        Size
  *        PerimToAreaRatio
  *        PerimSizeRatio
+ *        Area
  *        AreaFraction
  *        WidthHeightRatio
  *
@@ -814,6 +820,140 @@ PIXA  *pixad;
 
 
 /*!
+ * \brief   pixSelectByArea()
+ *
+ * \param[in]    pixs          1 bpp
+ * \param[in]    thresh        threshold number of FG pixels
+ * \param[in]    connectivity  4 or 8
+ * \param[in]    type          L_SELECT_IF_LT, L_SELECT_IF_GT,
+ *                             L_SELECT_IF_LTE, L_SELECT_IF_GTE
+ * \param[out]   pchanged      [optional] 1 if changed; 0 if clone returned
+ * \return  pixd, or NULL on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) The args specify constraints on the number of foreground
+ *          pixels in the components that are kept.
+ *      (2) If unchanged, returns a copy of pixs.  Otherwise,
+ *          returns a new pix with the filtered components.
+ *      (3) This filters components based on the number of fg pixels
+ *          in each component.
+ *      (4) Use L_SELECT_IF_LT or L_SELECT_IF_LTE to save components
+ *          with less than the threshold number of fg pixels, and
+ *          L_SELECT_IF_GT or L_SELECT_IF_GTE to remove them.
+ * </pre>
+ */
+PIX *
+pixSelectByArea(PIX       *pixs,
+                l_float32  thresh,
+                l_int32    connectivity,
+                l_int32    type,
+                l_int32   *pchanged)
+{
+l_int32  w, h, empty, changed, count;
+BOXA    *boxa;
+PIX     *pixd;
+PIXA    *pixas, *pixad;
+
+    PROCNAME("pixSelectByArea");
+
+    if (!pixs)
+        return (PIX *)ERROR_PTR("pixs not defined", procName, NULL);
+    if (connectivity != 4 && connectivity != 8)
+        return (PIX *)ERROR_PTR("connectivity not 4 or 8", procName, NULL);
+    if (type != L_SELECT_IF_LT && type != L_SELECT_IF_GT &&
+        type != L_SELECT_IF_LTE && type != L_SELECT_IF_GTE)
+        return (PIX *)ERROR_PTR("invalid type", procName, NULL);
+    if (pchanged) *pchanged = FALSE;
+
+        /* Check if any components exist */
+    pixZero(pixs, &empty);
+    if (empty)
+        return pixCopy(NULL, pixs);
+
+        /* Filter components */
+    boxa = pixConnComp(pixs, &pixas, connectivity);
+    pixad = pixaSelectByArea(pixas, thresh, type, &changed);
+    boxaDestroy(&boxa);
+    pixaDestroy(&pixas);
+
+    if (!changed) {
+        pixaDestroy(&pixad);
+        return pixCopy(NULL, pixs);
+    }
+
+        /* Render the result */
+    if (pchanged) *pchanged = TRUE;
+    pixGetDimensions(pixs, &w, &h, NULL);
+    count = pixaGetCount(pixad);
+    if (count == 0) {  /* return empty pix */
+        pixd = pixCreateTemplate(pixs);
+    } else {
+        pixd = pixaDisplay(pixad, w, h);
+        pixCopyResolution(pixd, pixs);
+        pixCopyColormap(pixd, pixs);
+        pixCopyText(pixd, pixs);
+        pixCopyInputFormat(pixd, pixs);
+    }
+    pixaDestroy(&pixad);
+    return pixd;
+}
+
+
+/*!
+ * \brief   pixaSelectByArea()
+ *
+ * \param[in]    pixas
+ * \param[in]    thresh      threshold number of fg pixels
+ * \param[in]    type        L_SELECT_IF_LT, L_SELECT_IF_GT,
+ *                           L_SELECT_IF_LTE, L_SELECT_IF_GTE
+ * \param[out]   pchanged    [optional] 1 if changed; 0 if clone returned
+ * \return  pixad, or NULL on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) Returns a pixa clone if no components are removed.
+ *      (2) Uses pix and box clones in the new pixa.
+ *      (3) This filters components based on the number of fg pixels
+ *          in the component.
+ *      (4) Use L_SELECT_IF_LT or L_SELECT_IF_LTE to save components
+ *          with less than the threshold number of fg pixels, and
+ *          L_SELECT_IF_GT or L_SELECT_IF_GTE to remove them.
+ * </pre>
+ */
+PIXA *
+pixaSelectByArea(PIXA      *pixas,
+                 l_float32  thresh,
+                 l_int32    type,
+                 l_int32   *pchanged)
+{
+NUMA  *na, *nai;
+PIXA  *pixad;
+
+    PROCNAME("pixaSelectByArea");
+
+    if (!pixas)
+        return (PIXA *)ERROR_PTR("pixas not defined", procName, NULL);
+    if (type != L_SELECT_IF_LT && type != L_SELECT_IF_GT &&
+        type != L_SELECT_IF_LTE && type != L_SELECT_IF_GTE)
+        return (PIXA *)ERROR_PTR("invalid type", procName, NULL);
+
+        /* Compute area of each component */
+    na = pixaCountPixels(pixas);
+
+        /* Generate indicator array for elements to be saved. */
+    nai = numaMakeThresholdIndicator(na, thresh, type);
+    numaDestroy(&na);
+
+        /* Filter to get output */
+    pixad = pixaSelectWithIndicator(pixas, nai, pchanged);
+
+    numaDestroy(&nai);
+    return pixad;
+}
+
+
+/*!
  * \brief   pixSelectByWidthHeightRatio()
  *
  * \param[in]    pixs          1 bpp
@@ -1379,7 +1519,7 @@ PIXA    *pixad;
         return (PIXA *)ERROR_PTR("boxa and pixa counts differ", procName, NULL);
 
         /* Use O(n) binsort if possible */
-    if (n > MIN_COMPS_FOR_BIN_SORT &&
+    if (n > MinCompsForBinSort &&
         ((sorttype == L_SORT_BY_X) || (sorttype == L_SORT_BY_Y) ||
          (sorttype == L_SORT_BY_WIDTH) || (sorttype == L_SORT_BY_HEIGHT) ||
          (sorttype == L_SORT_BY_PERIMETER)))
@@ -2104,7 +2244,7 @@ PIXA    *pixad;
         return (PIXA *)ERROR_PTR("invalid type", procName, NULL);
     if (incolor != L_BRING_IN_WHITE && incolor != L_BRING_IN_BLACK)
         return (PIXA *)ERROR_PTR("invalid incolor", procName, NULL);
-    if (L_ABS(angle) < MIN_ANGLE_TO_ROTATE)
+    if (L_ABS(angle) < MinAngleToRotate)
         return pixaCopy(pixas, L_COPY);
 
     n = pixaGetCount(pixas);

@@ -42,6 +42,10 @@
  *     colorpage.030.jpg
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
     /* Implementation is in this file */
@@ -54,10 +58,9 @@ pixFindColorRegionsLight(PIX *pixs, PIX *pixm, l_int32 factor,
 int main(int    argc,
          char **argv)
 {
-l_float32    fcolor;
-PIX         *pix1, *pix2, *pix3, *pix4;
-PIXA        *pixadb;
-static char  mainName[] = "find_colorregions";
+l_float32  fcolor;
+PIX       *pix1, *pix2, *pix3, *pix4;
+PIXA      *pixadb;
 
     setLeptDebugOK(1);
     lept_mkdir("lept/color");
@@ -68,7 +71,7 @@ static char  mainName[] = "find_colorregions";
     pixadb = pixaCreate(0);
     pixFindColorRegions(pix1, NULL, 4, 200, 60, 10, 90, 0.05,
                         &fcolor, &pix3, &pix4, pixadb);
-    fprintf(stderr, "ncolor = %f\n", fcolor);
+    lept_stderr("ncolor = %f\n", fcolor);
     if (pix3) pixDisplay(pix3, 0, 800);
     if (pix4) pixDisplay(pix4, 600, 800);
 
@@ -84,7 +87,7 @@ static char  mainName[] = "find_colorregions";
     pixadb = pixaCreate(0);
     pixFindColorRegionsLight(pix1, NULL, 4, 60, 230, 40, 20,
                              &fcolor, &pix3, &pix4, pixadb);
-    fprintf(stderr, "ncolor = %f\n", fcolor);
+    lept_stderr("ncolor = %f\n", fcolor);
     if (pix3) pixDisplay(pix3, 1100, 800);
     if (pix4) pixDisplay(pix4, 1700, 800);
 
@@ -185,7 +188,7 @@ pixFindColorRegionsLight(PIX        *pixs,
                          PIXA       *pixadb)
 {
 l_int32    lightbg, w, h, count;
-l_float32  ratio, val95, rank;
+l_float32  ratio, val95;
 BOXA      *boxa1, *boxa2;
 NUMA      *nah;
 PIX       *pix1, *pix2, *pix3, *pix4, *pix5, *pixm1, *pixm2, *pixm3;

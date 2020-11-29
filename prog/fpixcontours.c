@@ -33,6 +33,10 @@
  *   Default for ncontours is 40.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #include "allheaders.h"
 
@@ -48,7 +52,7 @@ PIX         *pix;
 static char  mainName[] = "fpixcontours";
 
     if (argc != 2 && argc != 3) {
-        fprintf(stderr, "Syntax: fpixcontours filein [ncontours]\n");
+        lept_stderr("Syntax: fpixcontours filein [ncontours]\n");
         return 1;
     }
     filein = argv[1];

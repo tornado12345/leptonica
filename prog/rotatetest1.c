@@ -40,7 +40,7 @@ int main(int    argc,
 {
 l_int32      i, w, h, d, rotflag;
 PIX         *pixs, *pixt, *pixd;
-l_float32    angle, deg2rad, pops, ang;
+l_float32    angle, deg2rad, ang;
 char        *filein, *fileout;
 static char  mainName[] = "rotatetest1";
 
@@ -65,7 +65,7 @@ static char  mainName[] = "rotatetest1";
     }
 
     pixGetDimensions(pixs, &w, &h, &d);
-    fprintf(stderr, "w = %d, h = %d\n", w, h);
+    lept_stderr("w = %d, h = %d\n", w, h);
 
 #if 0
         /* repertory of rotation operations to choose from */
@@ -107,6 +107,9 @@ static char  mainName[] = "rotatetest1";
 #endif
 
 #if 0
+{
+    l_float32  pops;
+
         /* timing of various rotation operations (choose) */
     startTimer();
     w = pixGetWidth(pixs);
@@ -116,7 +119,7 @@ static char  mainName[] = "rotatetest1";
         pixDestroy(&pixd);
     }
     pops = (l_float32)(w * h * NTIMES / 1000000.) / stopTimer();
-    fprintf(stderr, "vers. 1, mpops: %f\n", pops);
+    lept_stderr("vers. 1, mpops: %f\n", pops);
     startTimer();
     w = pixGetWidth(pixs);
     h = pixGetHeight(pixs);
@@ -124,12 +127,13 @@ static char  mainName[] = "rotatetest1";
         pixRotateShearIP(pixs, w/2, h/2, deg2rad * angle, L_BRING_IN_WHITE);
     }
     pops = (l_float32)(w * h * NTIMES / 1000000.) / stopTimer();
-    fprintf(stderr, "shear, mpops: %f\n", pops);
+    lept_stderr("shear, mpops: %f\n", pops);
     pixWrite(fileout, pixs, IFF_PNG);
     for (i = 0; i < NTIMES; i++) {
         pixRotateShearIP(pixs, w/2, h/2, -deg2rad * angle, L_BRING_IN_WHITE);
     }
     pixWrite("/usr/tmp/junkout", pixs, IFF_PNG);
+}
 #endif
 
 #if 0
@@ -152,11 +156,11 @@ static char  mainName[] = "rotatetest1";
 
     startTimer();
     pix1 = pixRotateAMColor(pixs, 0.12, 0xffffff00);
-    fprintf(stderr, " standard color rotate: %7.2f sec\n", stopTimer());
+    lept_stderr(" standard color rotate: %7.2f sec\n", stopTimer());
     pixWrite("/tmp/lept/rotate/color1.jpg", pix1, IFF_JFIF_JPEG);
     startTimer();
     pix2 = pixRotateAMColorFast(pixs, 0.12, 0xffffff00);
-    fprintf(stderr, " fast color rotate: %7.2f sec\n", stopTimer());
+    lept_stderr(" fast color rotate: %7.2f sec\n", stopTimer());
     pixWrite("/tmp/lept/rotate/color2.jpg", pix2, IFF_JFIF_JPEG);
     pixd = pixAbsDifference(pix1, pix2);
     pixGetColorHistogram(pixd, 1, &nar, &nag, &nab);

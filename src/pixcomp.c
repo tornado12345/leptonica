@@ -148,14 +148,23 @@
  * </pre>
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #include "allheaders.h"
 
-static const l_int32  INITIAL_PTR_ARRAYSIZE = 20;   /* n'import quoi */
+    /* Bounds on pixacomp array size */
+static const l_uint32  MaxPtrArraySize = 1000000;
+static const l_int32  InitialPtrArraySize = 20;      /*!< n'importe quoi */
+
+    /* Bound on size for a compressed data string */
+static const size_t  MaxDataSize = 1000000000;   /* 1 GB */
 
     /* These two globals are defined in writefile.c */
-extern l_int32 NumImageFileFormatExtensions;
-extern const char *ImageFileFormatExtensions[];
+extern l_int32  NumImageFileFormatExtensions;
+extern const char  *ImageFileFormatExtensions[];
 
     /* Static functions */
 static l_int32 pixacompExtendArray(PIXAC *pixac);
@@ -199,8 +208,7 @@ PIXC     *pixc;
         comptype != IFF_PNG && comptype != IFF_JFIF_JPEG)
         return (PIXC *)ERROR_PTR("invalid comptype", procName, NULL);
 
-    if ((pixc = (PIXC *)LEPT_CALLOC(1, sizeof(PIXC))) == NULL)
-        return (PIXC *)ERROR_PTR("pixc not made", procName, NULL);
+    pixc = (PIXC *)LEPT_CALLOC(1, sizeof(PIXC));
     pixGetDimensions(pix, &pixc->w, &pixc->h, &pixc->d);
     pixGetResolution(pix, &pixc->xres, &pixc->yres);
     if (pixGetColormap(pix))
@@ -255,8 +263,7 @@ PIXC    *pixc;
 
     if (pixReadHeaderMem(data, size, &format, &w, &h, &bps, &spp, &iscmap) == 1)
         return (PIXC *)ERROR_PTR("header data not read", procName, NULL);
-    if ((pixc = (PIXC *)LEPT_CALLOC(1, sizeof(PIXC))) == NULL)
-        return (PIXC *)ERROR_PTR("pixc not made", procName, NULL);
+    pixc = (PIXC *)LEPT_CALLOC(1, sizeof(PIXC));
     d = (spp == 3) ? 32 : bps * spp;
     pixc->w = w;
     pixc->h = h;
@@ -370,7 +377,6 @@ PIXC  *pixc;
         LEPT_FREE(pixc->text);
     LEPT_FREE(pixc);
     *ppixc = NULL;
-    return;
 }
 
 
@@ -379,6 +385,11 @@ PIXC  *pixc;
  *
  * \param[in]    pixcs
  * \return  pixcd, or NULL on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) Limit the size of the compressed pix to 500 MB.
+ * </pre>
  */
 PIXC *
 pixcompCopy(PIXC  *pixcs)
@@ -391,9 +402,11 @@ PIXC     *pixcd;
 
     if (!pixcs)
         return (PIXC *)ERROR_PTR("pixcs not defined", procName, NULL);
+    size = pixcs->size;
+    if (size > MaxDataSize)
+        return (PIXC *)ERROR_PTR("size > 1 GB; too big", procName, NULL);
 
-    if ((pixcd = (PIXC *)LEPT_CALLOC(1, sizeof(PIXC))) == NULL)
-        return (PIXC *)ERROR_PTR("pixcd not made", procName, NULL);
+    pixcd = (PIXC *)LEPT_CALLOC(1, sizeof(PIXC));
     pixcd->w = pixcs->w;
     pixcd->h = pixcs->h;
     pixcd->d = pixcs->d;
@@ -405,9 +418,11 @@ PIXC     *pixcd;
     pixcd->cmapflag = pixcs->cmapflag;
 
         /* Copy image data */
-    size = pixcs->size;
     datas = pixcs->data;
-    datad = (l_uint8 *)LEPT_CALLOC(size, sizeof(l_int8));
+    if ((datad = (l_uint8 *)LEPT_CALLOC(size, sizeof(l_int8))) == NULL) {
+        pixcompDestroy(&pixcd);
+        return (PIXC *)ERROR_PTR("pixcd not made", procName, NULL);
+    }
     memcpy(datad, datas, size);
     pixcd->data = datad;
     pixcd->size = size;
@@ -597,15 +612,13 @@ PIXAC  *pixac;
 
     PROCNAME("pixacompCreate");
 
-    if (n <= 0)
-        n = INITIAL_PTR_ARRAYSIZE;
+    if (n <= 0 || n > MaxPtrArraySize)
+        n = InitialPtrArraySize;
 
-    if ((pixac = (PIXAC *)LEPT_CALLOC(1, sizeof(PIXAC))) == NULL)
-        return (PIXAC *)ERROR_PTR("pixac not made", procName, NULL);
+    pixac = (PIXAC *)LEPT_CALLOC(1, sizeof(PIXAC));
     pixac->n = 0;
     pixac->nalloc = n;
     pixac->offset = 0;
-
     if ((pixac->pixc = (PIXC **)LEPT_CALLOC(n, sizeof(PIXC *))) == NULL) {
         pixacompDestroy(&pixac);
         return (PIXAC *)ERROR_PTR("pixc ptrs not made", procName, NULL);
@@ -670,8 +683,8 @@ PIXAC   *pixac;
 
     PROCNAME("pixacompCreateWithInit");
 
-    if (n <= 0)
-        return (PIXAC *)ERROR_PTR("n must be > 0", procName, NULL);
+    if (n <= 0 || n > MaxPtrArraySize)
+        return (PIXAC *)ERROR_PTR("n out of valid bounds", procName, NULL);
     if (pix) {
         if (comptype != IFF_DEFAULT && comptype != IFF_TIFF_G4 &&
             comptype != IFF_PNG && comptype != IFF_JFIF_JPEG)
@@ -882,9 +895,7 @@ PIXAC   *pixac;
     LEPT_FREE(pixac->pixc);
     boxaDestroy(&pixac->boxa);
     LEPT_FREE(pixac);
-
     *ppixac = NULL;
-    return;
 }
 
 
@@ -967,8 +978,11 @@ l_int32  n;
         return ERROR_INT("invalid copyflag", procName, 1);
 
     n = pixac->n;
-    if (n >= pixac->nalloc)
-        pixacompExtendArray(pixac);
+    if (n >= pixac->nalloc) {
+        if (pixacompExtendArray(pixac))
+            return ERROR_INT("extension failed", procName, 1);
+    }
+
     if (copyflag == L_INSERT)
         pixac->pixc[n] = pixc;
     else  /* L_COPY */
@@ -991,21 +1005,29 @@ l_int32  n;
  *          necessary in case we are NOT adding boxes simultaneously
  *          with adding pixc.  We always want the sizes of the
  *          pixac and boxa ptr arrays to be equal.
+ *      (2) The max number of pixcomp ptrs is 1M.
  * </pre>
  */
 static l_int32
 pixacompExtendArray(PIXAC  *pixac)
 {
+size_t  oldsize, newsize;
+
     PROCNAME("pixacompExtendArray");
 
     if (!pixac)
         return ERROR_INT("pixac not defined", procName, 1);
+    if (pixac->nalloc > MaxPtrArraySize)  /* belt & suspenders */
+        return ERROR_INT("pixac has too many ptrs", procName, 1);
+    oldsize = pixac->nalloc * sizeof(PIXC *);
+    newsize = 2 * oldsize;
+    if (newsize > 8 * MaxPtrArraySize)  /* ptrs for 1M pixcomp */
+        return ERROR_INT("newsize > 8 MB; too large", procName, 1);
 
     if ((pixac->pixc = (PIXC **)reallocNew((void **)&pixac->pixc,
-                            sizeof(PIXC *) * pixac->nalloc,
-                            2 * sizeof(PIXC *) * pixac->nalloc)) == NULL)
+                                           oldsize, newsize)) == NULL)
         return ERROR_INT("new ptr array not returned", procName, 1);
-    pixac->nalloc = 2 * pixac->nalloc;
+    pixac->nalloc *= 2;
     boxaExtendArray(pixac->boxa);
     return 0;
 }
@@ -1668,6 +1690,11 @@ PIXAC  *pixac;
  *
  * \param[in]    fp   file stream
  * \return  pixac, or NULL on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) It is OK for the pixacomp to be empty.
+ * </pre>
  */
 PIXAC *
 pixacompReadStream(FILE  *fp)
@@ -1675,7 +1702,8 @@ pixacompReadStream(FILE  *fp)
 char      buf[256];
 l_uint8  *data;
 l_int32   n, offset, i, w, h, d, ignore;
-l_int32   comptype, size, cmapflag, version, xres, yres;
+l_int32   comptype, cmapflag, version, xres, yres;
+size_t    size;
 BOXA     *boxa;
 PIXC     *pixc;
 PIXAC    *pixac;
@@ -1693,6 +1721,11 @@ PIXAC    *pixac;
         return (PIXAC *)ERROR_PTR("not a pixacomp file", procName, NULL);
     if (fscanf(fp, "Offset of index into array = %d", &offset) != 1)
         return (PIXAC *)ERROR_PTR("offset not read", procName, NULL);
+    if (n < 0)
+        return (PIXAC *)ERROR_PTR("num pixcomp ptrs < 0", procName, NULL);
+    if (n > MaxPtrArraySize)
+        return (PIXAC *)ERROR_PTR("too many pixcomp ptrs", procName, NULL);
+    if (n == 0) L_INFO("the pixacomp is empty\n", procName);
 
     if ((pixac = pixacompCreate(n)) == NULL)
         return (PIXAC *)ERROR_PTR("pixac not made", procName, NULL);
@@ -1708,12 +1741,17 @@ PIXAC    *pixac;
         if (fscanf(fp, "\nPixcomp[%d]: w = %d, h = %d, d = %d\n",
                    &ignore, &w, &h, &d) != 4) {
             pixacompDestroy(&pixac);
-            return (PIXAC *)ERROR_PTR("size reading", procName, NULL);
+            return (PIXAC *)ERROR_PTR("dimension reading", procName, NULL);
         }
-        if (fscanf(fp, "  comptype = %d, size = %d, cmapflag = %d\n",
+        if (fscanf(fp, "  comptype = %d, size = %zu, cmapflag = %d\n",
                    &comptype, &size, &cmapflag) != 3) {
             pixacompDestroy(&pixac);
             return (PIXAC *)ERROR_PTR("comptype/size reading", procName, NULL);
+        }
+        if (size > MaxDataSize) {
+            pixacompDestroy(&pixac);
+            L_ERROR("data size = %zu is too big", procName, size);
+            return NULL;
         }
 
            /* Use fgets() and sscanf(); not fscanf(), for the last
@@ -1858,8 +1896,8 @@ PIXC    *pixc;
             return ERROR_INT("pixc not found", procName, 1);
         fprintf(fp, "\nPixcomp[%d]: w = %d, h = %d, d = %d\n",
                 i, pixc->w, pixc->h, pixc->d);
-        fprintf(fp, "  comptype = %d, size = %lu, cmapflag = %d\n",
-                pixc->comptype, (unsigned long)pixc->size, pixc->cmapflag);
+        fprintf(fp, "  comptype = %d, size = %zu, cmapflag = %d\n",
+                pixc->comptype, pixc->size, pixc->cmapflag);
         fprintf(fp, "  xres = %d, yres = %d\n", pixc->xres, pixc->yres);
         fwrite(pixc->data, 1, pixc->size, fp);
         fprintf(fp, "\n");
@@ -1934,7 +1972,8 @@ FILE    *fp;
  *                             in the input
  * \param[in]    scalefactor   scaling factor applied to each image; > 0.0
  * \param[in]    type          encoding type (L_JPEG_ENCODE, L_G4_ENCODE,
- *                             L_FLATE_ENCODE, or L_DEFAULT_ENCODE for default
+ *                             L_FLATE_ENCODE, L_JP2K_ENCODE, or
+ *                             L_DEFAULT_ENCODE for default)
  * \param[in]    quality       used for JPEG only; 0 for default (75)
  * \param[in]    title         [optional] pdf title
  * \param[in]    fileout       pdf file of all images
@@ -1996,7 +2035,8 @@ size_t    nbytes;
  * \param[in]    res           input resolution of all images
  * \param[in]    scalefactor   scaling factor applied to each image; > 0.0
  * \param[in]    type          encoding type (L_JPEG_ENCODE, L_G4_ENCODE,
- *                             L_FLATE_ENCODE, or L_DEFAULT_ENCODE for default
+ *                             L_FLATE_ENCODE, L_JP2K_ENCODE, or
+ *                             L_DEFAULT_ENCODE for default)
  * \param[in]    quality       used for JPEG only; 0 for default (75)
  * \param[in]    title         [optional] pdf title
  * \param[out]   pdata         output pdf data (of all images
@@ -2036,7 +2076,9 @@ L_PTRA   *pa_data;
     if (!pixac)
         return ERROR_INT("pixac not defined", procName, 1);
     if (scalefactor <= 0.0) scalefactor = 1.0;
-    if (type < L_DEFAULT_ENCODE || type > L_FLATE_ENCODE) {
+    if (type != L_DEFAULT_ENCODE && type != L_JPEG_ENCODE &&
+        type != L_G4_ENCODE && type != L_FLATE_ENCODE &&
+        type != L_JP2K_ENCODE) {
         L_WARNING("invalid compression type; using per-page default\n",
                   procName);
         type = L_DEFAULT_ENCODE;
@@ -2062,6 +2104,8 @@ L_PTRA   *pa_data;
             pix = pixClone(pixs);
         pixDestroy(&pixs);
         scaledres = (l_int32)(res * scalefactor);
+
+            /* Select the encoding type */
         if (type != L_DEFAULT_ENCODE) {
             pagetype = type;
         } else if (selectDefaultPdfEncoding(pix, &pagetype) != 0) {
@@ -2070,6 +2114,7 @@ L_PTRA   *pa_data;
             pixDestroy(&pix);
             continue;
         }
+
         ret = pixConvertToPdfData(pix, pagetype, quality, &imdata, &imbytes,
                                   0, 0, scaledres, title, NULL, 0);
         pixDestroy(&pix);
@@ -2306,8 +2351,8 @@ pixcompWriteStreamInfo(FILE        *fp,
         fprintf(fp, "  Pixcomp Info:");
     fprintf(fp, " width = %d, height = %d, depth = %d\n",
             pixc->w, pixc->h, pixc->d);
-    fprintf(fp, "    xres = %d, yres = %d, size in bytes = %lu\n",
-            pixc->xres, pixc->yres, (unsigned long)pixc->size);
+    fprintf(fp, "    xres = %d, yres = %d, size in bytes = %zu\n",
+            pixc->xres, pixc->yres, pixc->size);
     if (pixc->cmapflag)
         fprintf(fp, "    has colormap\n");
     else

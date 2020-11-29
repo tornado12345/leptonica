@@ -399,30 +399,33 @@
  * </pre>
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <math.h>
 #include "allheaders.h"
 
 static l_int32 dewarpaExtendArraysToSize(L_DEWARPA *dewa, l_int32 size);
 
     /* Parameter values used in dewarpaCreate() */
-static const l_int32     INITIAL_PTR_ARRAYSIZE = 20;   /* n'import quoi */
-static const l_int32     MAX_PTR_ARRAYSIZE = 10000;
-static const l_int32     DEFAULT_ARRAY_SAMPLING = 30;
-static const l_int32     MIN_ARRAY_SAMPLING = 8;
-static const l_int32     DEFAULT_MIN_LINES = 15;
-static const l_int32     MIN_MIN_LINES = 4;
-static const l_int32     DEFAULT_MAX_REF_DIST = 16;
-static const l_int32     DEFAULT_USE_BOTH = TRUE;
-static const l_int32     DEFAULT_CHECK_COLUMNS = TRUE;
+static const l_int32     InitialPtrArraySize = 20;   /* n'import quoi */
+static const l_int32     MaxPtrArraySize = 10000;
+static const l_int32     DefaultArraySampling = 30;
+static const l_int32     MinArraySampling = 8;
+static const l_int32     DefaultMinLines = 15;
+static const l_int32     MinMinLines = 4;
+static const l_int32     DefaultMaxRefDist = 16;
+static const l_int32     DefaultUseBoth = TRUE;
+static const l_int32     DefaultCheckColumns = TRUE;
 
     /* Parameter values used in dewarpaSetCurvatures() */
-static const l_int32     DEFAULT_MAX_LINECURV = 180;
-static const l_int32     DEFAULT_MIN_DIFF_LINECURV = 0;
-static const l_int32     DEFAULT_MAX_DIFF_LINECURV = 200;
-static const l_int32     DEFAULT_MAX_EDGECURV = 50;
-static const l_int32     DEFAULT_MAX_DIFF_EDGECURV = 40;
-static const l_int32     DEFAULT_MAX_EDGESLOPE = 80;
-
+static const l_int32     DefaultMaxLineCurv = 150;
+static const l_int32     DefaultMinDiffLineCurv = 0;
+static const l_int32     DefaultMaxDiffLineCurv = 170;
+static const l_int32     DefaultMaxEdgeCurv = 50;
+static const l_int32     DefaultMaxDiffEdgeCurv = 40;
+static const l_int32     DefaultMaxEdgeSlope = 80;
 
 /*----------------------------------------------------------------------*
  *                           Create/destroy Dewarp                      *
@@ -430,8 +433,8 @@ static const l_int32     DEFAULT_MAX_EDGESLOPE = 80;
 /*!
  * \brief   dewarpCreate()
  *
- * \param[in]   pixs 1 bpp
- * \param[in]   pageno page number
+ * \param[in]   pixs     1 bpp
+ * \param[in]   pageno   page number
  * \return  dew or NULL on error
  *
  * <pre>
@@ -455,8 +458,7 @@ L_DEWARP  *dew;
     if (pixGetDepth(pixs) != 1)
         return (L_DEWARP *)ERROR_PTR("pixs not 1 bpp", procName, NULL);
 
-    if ((dew = (L_DEWARP *)LEPT_CALLOC(1, sizeof(L_DEWARP))) == NULL)
-        return (L_DEWARP *)ERROR_PTR("dew not made", procName, NULL);
+    dew = (L_DEWARP *)LEPT_CALLOC(1, sizeof(L_DEWARP));
     dew->pixs = pixClone(pixs);
     dew->pageno = pageno;
     dew->w = pixGetWidth(pixs);
@@ -468,8 +470,8 @@ L_DEWARP  *dew;
 /*!
  * \brief   dewarpCreateRef()
  *
- * \param[in]    pageno this page number
- * \param[in]    refpage page number of dewarp disparity arrays to be used
+ * \param[in]    pageno    this page number
+ * \param[in]    refpage   page number of dewarp disparity arrays to be used
  * \return  dew or NULL on error
  *
  * <pre>
@@ -488,10 +490,7 @@ dewarpCreateRef(l_int32  pageno,
 {
 L_DEWARP  *dew;
 
-    PROCNAME("dewarpCreateRef");
-
-    if ((dew = (L_DEWARP *)LEPT_CALLOC(1, sizeof(L_DEWARP))) == NULL)
-        return (L_DEWARP *)ERROR_PTR("dew not made", procName, NULL);
+    dew = (L_DEWARP *)LEPT_CALLOC(1, sizeof(L_DEWARP));
     dew->pageno = pageno;
     dew->hasref = 1;
     dew->refpage = refpage;
@@ -502,7 +501,7 @@ L_DEWARP  *dew;
 /*!
  * \brief   dewarpDestroy()
  *
- * \param[in,out]   pdew will be set to null before returning
+ * \param[in,out]   pdew    will be set to null before returning
  * \return  void
  */
 void
@@ -530,7 +529,6 @@ L_DEWARP  *dew;
     numaDestroy(&dew->nacurves);
     LEPT_FREE(dew);
     *pdew = NULL;
-    return;
 }
 
 
@@ -540,11 +538,11 @@ L_DEWARP  *dew;
 /*!
  * \brief   dewarpaCreate()
  *
- * \param[in]   nptrs number of dewarp page ptrs; typically the number of pages
- * \param[in]   sampling use 0 for default value; the minimum allowed is 8
- * \param[in]   redfactor of input images: 1 is full resolution; 2 is 2x reduced
- * \param[in]   minlines minimum number of lines to accept; use 0 for default
- * \param[in]   maxdist for locating reference disparity; use -1 for default
+ * \param[in]   nptrs       number of dewarp page ptrs; typ. the number of pages
+ * \param[in]   sampling    use 0 for default value; the minimum allowed is 8
+ * \param[in]   redfactor   of input images: 1 is full res; 2 is 2x reduced
+ * \param[in]   minlines    minimum number of lines to accept; use 0 for default
+ * \param[in]   maxdist     for locating reference disparity; use -1 for default
  * \return  dewa or NULL on error
  *
  * <pre>
@@ -580,28 +578,28 @@ L_DEWARPA  *dewa;
     PROCNAME("dewarpaCreate");
 
     if (nptrs <= 0)
-        nptrs = INITIAL_PTR_ARRAYSIZE;
-    if (nptrs > MAX_PTR_ARRAYSIZE)
+        nptrs = InitialPtrArraySize;
+    if (nptrs > MaxPtrArraySize)
         return (L_DEWARPA *)ERROR_PTR("too many pages", procName, NULL);
     if (redfactor != 1 && redfactor != 2)
         return (L_DEWARPA *)ERROR_PTR("redfactor not in {1,2}",
                                       procName, NULL);
     if (sampling == 0) {
-         sampling = DEFAULT_ARRAY_SAMPLING;
-    } else if (sampling < MIN_ARRAY_SAMPLING) {
+         sampling = DefaultArraySampling;
+    } else if (sampling < MinArraySampling) {
          L_WARNING("sampling too small; setting to %d\n", procName,
-                   MIN_ARRAY_SAMPLING);
-         sampling = MIN_ARRAY_SAMPLING;
+                   MinArraySampling);
+         sampling = MinArraySampling;
     }
     if (minlines == 0) {
-        minlines = DEFAULT_MIN_LINES;
-    } else if (minlines < MIN_MIN_LINES) {
+        minlines = DefaultMinLines;
+    } else if (minlines < MinMinLines) {
         L_WARNING("minlines too small; setting to %d\n", procName,
-                  MIN_MIN_LINES);
-        minlines = DEFAULT_MIN_LINES;
+                  MinMinLines);
+        minlines = DefaultMinLines;
     }
     if (maxdist < 0)
-         maxdist = DEFAULT_MAX_REF_DIST;
+         maxdist = DefaultMaxRefDist;
 
     dewa = (L_DEWARPA *)LEPT_CALLOC(1, sizeof(L_DEWARPA));
     dewa->dewarp = (L_DEWARP **)LEPT_CALLOC(nptrs, sizeof(L_DEWARPA *));
@@ -615,14 +613,14 @@ L_DEWARPA  *dewa;
     dewa->redfactor = redfactor;
     dewa->minlines = minlines;
     dewa->maxdist = maxdist;
-    dewa->max_linecurv = DEFAULT_MAX_LINECURV;
-    dewa->min_diff_linecurv = DEFAULT_MIN_DIFF_LINECURV;
-    dewa->max_diff_linecurv = DEFAULT_MAX_DIFF_LINECURV;
-    dewa->max_edgeslope = DEFAULT_MAX_EDGESLOPE;
-    dewa->max_edgecurv = DEFAULT_MAX_EDGECURV;
-    dewa->max_diff_edgecurv = DEFAULT_MAX_DIFF_EDGECURV;
-    dewa->check_columns = DEFAULT_CHECK_COLUMNS;
-    dewa->useboth = DEFAULT_USE_BOTH;
+    dewa->max_linecurv = DefaultMaxLineCurv;
+    dewa->min_diff_linecurv = DefaultMinDiffLineCurv;
+    dewa->max_diff_linecurv = DefaultMaxDiffLineCurv;
+    dewa->max_edgeslope = DefaultMaxEdgeSlope;
+    dewa->max_edgecurv = DefaultMaxEdgeCurv;
+    dewa->max_diff_edgecurv = DefaultMaxDiffEdgeCurv;
+    dewa->check_columns = DefaultCheckColumns;
+    dewa->useboth = DefaultUseBoth;
     return dewa;
 }
 
@@ -630,11 +628,11 @@ L_DEWARPA  *dewa;
 /*!
  * \brief   dewarpaCreateFromPixacomp()
  *
- * \param[in]   pixac pixacomp of G4, 1 bpp images; with 1x1x1 placeholders
- * \param[in]   useboth 0 for only vert disparity; 1 for both vert and horiz
- * \param[in]   sampling use -1 or 0 for default value; otherwise minimum of 5
- * \param[in]   minlines minimum number of lines to accept; e.g., 10
- * \param[in]   maxdist for locating reference disparity; use -1 for default
+ * \param[in]   pixac      pixacomp of G4, 1 bpp images; with 1x1x1 placeholders
+ * \param[in]   useboth    0 for only vert disparity; 1 for both vert and horiz
+ * \param[in]   sampling   use -1 or 0 for default value; otherwise minimum of 5
+ * \param[in]   minlines   minimum number of lines to accept; e.g., 10
+ * \param[in]   maxdist    for locating reference disparity; use -1 for default
  * \return  dewa or NULL on error
  *
  * <pre>
@@ -715,7 +713,7 @@ PIX        *pixt;
 /*!
  * \brief   dewarpaDestroy()
  *
- * \param[in,out]   pdewa will be set to null before returning
+ * \param[in,out]   pdewa    will be set to null before returning
  * \return  void
  */
 void
@@ -747,7 +745,6 @@ L_DEWARPA  *dewa;
     LEPT_FREE(dewa->dewarpcache);
     LEPT_FREE(dewa);
     *pdewa = NULL;
-    return;
 }
 
 
@@ -755,7 +752,7 @@ L_DEWARPA  *dewa;
  * \brief   dewarpaDestroyDewarp()
  *
  * \param[in]    dewa
- * \param[in]    pageno of dew to be destroyed
+ * \param[in]    pageno    of dew to be destroyed
  * \return  0 if OK, 1 on error
  */
 l_ok
@@ -786,7 +783,7 @@ L_DEWARP   *dew;
  * \brief   dewarpaInsertDewarp()
  *
  * \param[in]    dewa
- * \param[in]    dew  to be added
+ * \param[in]    dew     to be added
  * \return  0 if OK, 1 on error
  *
  * <pre>
@@ -817,7 +814,7 @@ L_DEWARP  *prevdew;
 
     dew->dewa = dewa;
     pageno = dew->pageno;
-    if (pageno > MAX_PTR_ARRAYSIZE)
+    if (pageno > MaxPtrArraySize)
         return ERROR_INT("too many pages", procName, 1);
     if (pageno > dewa->maxpage)
         dewa->maxpage = pageno;
@@ -830,8 +827,10 @@ L_DEWARP  *prevdew;
         newsize = 2 * pageno;
     else if (pageno >= n)
         newsize = 2 * n;
-    if (newsize > n)
-        dewarpaExtendArraysToSize(dewa, newsize);
+    if (newsize > n) {
+        if (dewarpaExtendArraysToSize(dewa, newsize))
+            return ERROR_INT("extension failed", procName, 1);
+    }
 
     if ((prevdew = dewarpaGetDewarp(dewa, pageno)) != NULL)
         dewarpDestroy(&prevdew);
@@ -858,7 +857,7 @@ L_DEWARP  *prevdew;
  * \brief   dewarpaExtendArraysToSize()
  *
  * \param[in]    dewa
- * \param[in]    size new size of dewarpa array
+ * \param[in]    size    new size of dewarpa array
  * \return  0 if OK; 1 on error
  *
  * <pre>
@@ -894,9 +893,9 @@ dewarpaExtendArraysToSize(L_DEWARPA  *dewa,
 /*!
  * \brief   dewarpaGetDewarp()
  *
- * \param[in]    dewa populated with dewarp structs for pages
- * \param[in]    index into dewa: this is the pageno
- * \return  dew handle; still owned by dewa, or NULL on error
+ * \param[in]    dewa    populated with dewarp structs for pages
+ * \param[in]    index   into dewa: this is the pageno
+ * \return  dew   handle; still owned by dewa, or NULL on error
  */
 L_DEWARP *
 dewarpaGetDewarp(L_DEWARPA  *dewa,
@@ -923,12 +922,12 @@ dewarpaGetDewarp(L_DEWARPA  *dewa,
  * \brief   dewarpaSetCurvatures()
  *
  * \param[in]    dewa
- * \param[in]    max_linecurv -1 for default
- * \param[in]    min_diff_linecurv -1 for default; 0 to accept all models
- * \param[in]    max_diff_linecurv -1 for default
- * \param[in]    max_edgecurv -1 for default
- * \param[in]    max_diff_edgecurv -1 for default
- * \param[in]    max_edgeslope -1 for default
+ * \param[in]    max_linecurv        -1 for default
+ * \param[in]    min_diff_linecurv   -1 for default; 0 to accept all models
+ * \param[in]    max_diff_linecurv   -1 for default
+ * \param[in]    max_edgecurv        -1 for default
+ * \param[in]    max_diff_edgecurv   -1 for default
+ * \param[in]    max_edgeslope       -1 for default
  * \return  0 if OK, 1 on error
  *
  * <pre>
@@ -959,7 +958,7 @@ dewarpaGetDewarp(L_DEWARPA  *dewa,
  *          A model having maximum line curvature larger than about 150
  *          micro-units should probably not be used.
  *      (5) A model having a left or right edge curvature larger than
- *          about 100 micro-units should probably not be used.
+ *          about 50 micro-units should probably not be used.
  * </pre>
  */
 l_ok
@@ -977,32 +976,32 @@ dewarpaSetCurvatures(L_DEWARPA  *dewa,
         return ERROR_INT("dewa not defined", procName, 1);
 
     if (max_linecurv == -1)
-        dewa->max_linecurv = DEFAULT_MAX_LINECURV;
+        dewa->max_linecurv = DefaultMaxLineCurv;
     else
         dewa->max_linecurv = L_ABS(max_linecurv);
 
     if (min_diff_linecurv == -1)
-        dewa->min_diff_linecurv = DEFAULT_MIN_DIFF_LINECURV;
+        dewa->min_diff_linecurv = DefaultMinDiffLineCurv;
     else
         dewa->min_diff_linecurv = L_ABS(min_diff_linecurv);
 
     if (max_diff_linecurv == -1)
-        dewa->max_diff_linecurv = DEFAULT_MAX_DIFF_LINECURV;
+        dewa->max_diff_linecurv = DefaultMaxDiffLineCurv;
     else
         dewa->max_diff_linecurv = L_ABS(max_diff_linecurv);
 
     if (max_edgecurv == -1)
-        dewa->max_edgecurv = DEFAULT_MAX_EDGECURV;
+        dewa->max_edgecurv = DefaultMaxEdgeCurv;
     else
         dewa->max_edgecurv = L_ABS(max_edgecurv);
 
     if (max_diff_edgecurv == -1)
-        dewa->max_diff_edgecurv = DEFAULT_MAX_DIFF_EDGECURV;
+        dewa->max_diff_edgecurv = DefaultMaxDiffEdgeCurv;
     else
         dewa->max_diff_edgecurv = L_ABS(max_diff_edgecurv);
 
     if (max_edgeslope == -1)
-        dewa->max_edgeslope = DEFAULT_MAX_EDGESLOPE;
+        dewa->max_edgeslope = DefaultMaxEdgeSlope;
     else
         dewa->max_edgeslope = L_ABS(max_edgeslope);
 
@@ -1045,7 +1044,7 @@ dewarpaUseBothArrays(L_DEWARPA  *dewa,
  * \brief   dewarpaSetCheckColumns()
  *
  * \param[in]    dewa
- * \param[in]    check_columns 0 for false, 1 for true
+ * \param[in]    check_columns    0 for false, 1 for true
  * \return  0 if OK, 1 on error
  *
  * <pre>
@@ -1054,13 +1053,13 @@ dewarpaUseBothArrays(L_DEWARPA  *dewa,
  *          'useboth' is set, this will count the number of text
  *          columns.  If the number is larger than 1, this will
  *          prevent the application of horizontal disparity arrays
- *          if they exist.  Note that the default value of check_columns
- *          if 0 (FALSE).
- *      (2) This field is set to 0 by default.  For horizontal disparity
- *          correction to take place on a single column of text, you must have:
+ *          if they exist.
+ *      (2) The check_columns field is set to TRUE by default.
+ *          For horizontal disparity correction to take place on a
+ *          single column of text, you must have:
  *           - a valid horizontal disparity array
  *           - useboth = 1 (TRUE)
- *          If there are multiple columns, additionally
+ *          If there are multiple columns, in addition you need
  *           - check_columns = 0 (FALSE)
  *
  * </pre>
@@ -1083,7 +1082,7 @@ dewarpaSetCheckColumns(L_DEWARPA  *dewa,
  * \brief   dewarpaSetMaxDistance()
  *
  * \param[in]    dewa
- * \param[in]    maxdist for using ref models
+ * \param[in]    maxdist    for using ref models
  * \return  0 if OK, 1 on error
  *
  * <pre>
@@ -1141,8 +1140,8 @@ L_DEWARP  *dew;
 /*!
  * \brief   dewarpReadStream()
  *
- * \param[in]    fp file stream
- * \return  dew, or NULL on error
+ * \param[in]    fp    file stream
+ * \return  dew  dewarp, or NULL on error
  *
  * <pre>
  * Notes:
@@ -1256,8 +1255,8 @@ FPIX      *fpixv, *fpixh;
 /*!
  * \brief   dewarpReadMem()
  *
- * \param[in]    data  serialization of dewarp
- * \param[in]    size  of data in bytes
+ * \param[in]    data     serialization of dewarp
+ * \param[in]    size     of data in bytes
  * \return  dew  dewarp, or NULL on error
  */
 L_DEWARP  *
@@ -1315,7 +1314,7 @@ FILE    *fp;
 /*!
  * \brief   dewarpWriteStream()
  *
- * \param[in]    fp file stream opened for "wb"
+ * \param[in]    fp     file stream opened for "wb"
  * \param[in]    dew
  * \return  0 if OK, 1 on error
  *
@@ -1372,8 +1371,8 @@ l_int32  vdispar, hdispar;
 /*!
  * \brief   dewarpWriteMem()
  *
- * \param[out]   pdata data of serialized dewarp (not ascii)
- * \param[out]   psize size of returned data
+ * \param[out]   pdata    data of serialized dewarp (not ascii)
+ * \param[out]   psize    size of returned data
  * \param[in]    dew
  * \return  0 if OK, 1 on error
  *
@@ -1458,7 +1457,7 @@ L_DEWARPA  *dewa;
 /*!
  * \brief   dewarpaReadStream()
  *
- * \param[in]    fp file stream
+ * \param[in]    fp    file stream
  * \return  dewa, or NULL on error
  *
  * <pre>
@@ -1492,6 +1491,10 @@ NUMA       *namodels;
 
     if (fscanf(fp, "ndewarp = %d, maxpage = %d\n", &ndewarp, &maxpage) != 2)
         return (L_DEWARPA *)ERROR_PTR("read fail for maxpage+", procName, NULL);
+    if (ndewarp < 1)
+        return (L_DEWARPA *)ERROR_PTR("pages not >= 1", procName, NULL);
+    if (ndewarp > MaxPtrArraySize)
+        return (L_DEWARPA *)ERROR_PTR("too many pages", procName, NULL);
     if (fscanf(fp,
                "sampling = %d, redfactor = %d, minlines = %d, maxdist = %d\n",
                &sampling, &redfactor, &minlines, &maxdist) != 4)
@@ -1521,6 +1524,7 @@ NUMA       *namodels;
     for (i = 0; i < ndewarp; i++) {
         if ((dew = dewarpReadStream(fp)) == NULL) {
             L_ERROR("read fail for dew[%d]\n", procName, i);
+            dewarpaDestroy(&dewa);
             return NULL;
         }
         dewarpaInsertDewarp(dewa, dew);
@@ -1529,7 +1533,6 @@ NUMA       *namodels;
 
         /* Validate the models and insert reference models */
     dewarpaInsertRefModels(dewa, 0, 0);
-
     return dewa;
 }
 
@@ -1596,7 +1599,7 @@ FILE    *fp;
 /*!
  * \brief   dewarpaWriteStream()
  *
- * \param[in]    fp file stream opened for "wb"
+ * \param[in]    fp     file stream opened for "wb"
  * \param[in]    dewa
  * \return  0 if OK, 1 on error
  */
@@ -1646,8 +1649,8 @@ l_int32  ndewarp, i, pageno;
 /*!
  * \brief   dewarpaWriteMem()
  *
- * \param[out]   pdata data of serialized dewarpa (not ascii)
- * \param[out]   psize size of returned data
+ * \param[out]   pdata    data of serialized dewarpa (not ascii)
+ * \param[out]   psize    size of returned data
  * \param[in]    dewa
  * \return  0 if OK, 1 on error
  *

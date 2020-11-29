@@ -248,7 +248,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#include "config_auto.h"
+#include <config_auto.h>
 #endif  /* HAVE_CONFIG_H */
 
 #include <string.h>
@@ -360,7 +360,6 @@ CCBORDA  *ccba;
     LEPT_FREE(ccba->ccb);
     LEPT_FREE(ccba);
     *pccba = NULL;
-    return;
 }
 
 
@@ -380,26 +379,19 @@ PTAA    *local;
 
     PROCNAME("ccbCreate");
 
-    if (pixs) {
-        if (pixGetDepth(pixs) != 1)
-            return (CCBORD *)ERROR_PTR("pixs not binary", procName, NULL);
-    }
+    if (pixs && pixGetDepth(pixs) != 1)  /* pixs can be null */
+        return (CCBORD *)ERROR_PTR("pixs defined and not 1bpp", procName, NULL);
 
-    if ((ccb = (CCBORD *)LEPT_CALLOC(1, sizeof(CCBORD))) == NULL)
-        return (CCBORD *)ERROR_PTR("ccb not made", procName, NULL);
+    ccb = (CCBORD *)LEPT_CALLOC(1, sizeof(CCBORD));
     ccb->refcount++;
     if (pixs)
         ccb->pix = pixClone(pixs);
-    if ((boxa = boxaCreate(1)) == NULL)
-        return (CCBORD *)ERROR_PTR("boxa not made", procName, NULL);
+    boxa = boxaCreate(1);
     ccb->boxa = boxa;
-    if ((start = ptaCreate(1)) == NULL)
-        return (CCBORD *)ERROR_PTR("start pta not made", procName, NULL);
+    start = ptaCreate(1);
     ccb->start = start;
-    if ((local = ptaaCreate(1)) == NULL)
-        return (CCBORD *)ERROR_PTR("local ptaa not made", procName, NULL);
+    local = ptaaCreate(1);
     ccb->local = local;
-
     return ccb;
 }
 
@@ -446,7 +438,6 @@ CCBORD  *ccb;
         LEPT_FREE(ccb);
         *pccb = NULL;
     }
-    return;
 }
 
 
@@ -474,8 +465,10 @@ l_int32  n;
         return ERROR_INT("ccb not defined", procName, 1);
 
     n = ccbaGetCount(ccba);
-    if (n >= ccba->nalloc)
-        ccbaExtendArray(ccba);
+    if (n >= ccba->nalloc) {
+        if (ccbaExtendArray(ccba))
+            return ERROR_INT("extension failed", procName, 1);
+    }
     ccba->ccb[n] = ccb;
     ccba->n++;
     return 0;
@@ -707,7 +700,7 @@ PIXA     *pixa;
         return (CCBORD *)ERROR_PTR("boxa not made", procName, NULL);
     }
     nh = boxaGetCount(boxa);
-/*    fprintf(stderr, "%d holes\n", nh); */
+/*    lept_stderr("%d holes\n", nh); */
 
         /* For each hole, find an interior pixel within the hole,
          * then march to the right and stop at the first border
@@ -746,7 +739,7 @@ PIXA     *pixa;
 #if  DEBUG_PRINT
         boxPrintStreamInfo(stderr, box);
         boxPrintStreamInfo(stderr, boxe);
-        fprintf(stderr, "xs = %d, ys = %d\n", xs, ys);
+        lept_stderr("xs = %d, ys = %d\n", xs, ys);
 #endif   /* DEBUG_PRINT */
         pixGetHoleBorder(ccb, pixs, boxe, xs, ys);
         boxDestroy(&boxt);
@@ -1019,8 +1012,7 @@ PTA       *pta;
     boxaAddBox(ccb->boxa, box, L_COPY);
     ptaAddPt(ccb->start, xs, ys);
 
-    if ((pta = ptaCreate(0)) == NULL)
-        return ERROR_INT("pta not made", procName, 1);
+    pta = ptaCreate(0);
     ptaaAddPta(ccb->local, pta, L_INSERT);
     ptaAddPt(pta, xs, ys);   /* initial pixel */
 
@@ -1090,6 +1082,8 @@ l_uint32  *line;
         pos = (qpos + i) % 8;
         npx = px + xpostab[pos];
         npy = py + ypostab[pos];
+        if (npx < 0 || npx >= w || npy < 0 || npy >= h)
+            continue;
         line = data + npy * wpl;
         val = GET_DATA_BIT(line, npx);
         if (val) {
@@ -1195,16 +1189,17 @@ PTA     *ptal, *ptag;
         nb = ptaaGetCount(ptaal);   /* number of borders */
         if (ccb->global)   /* remove old one */
             ptaaDestroy(&ccb->global);
-        if ((ptaag = ptaaCreate(nb)) == NULL)
+        if ((ptaag = ptaaCreate(nb)) == NULL) {
+            ccbDestroy(&ccb);
             return ERROR_INT("ptaag not made", procName, 1);
+        }
         ccb->global = ptaag;  /* save new one */
 
             /* Iterate through the borders for this c.c. */
         for (j = 0; j < nb; j++) {
             ptal = ptaaGetPta(ptaal, j, L_CLONE);
             n = ptaGetCount(ptal);   /* number of pixels in border */
-            if ((ptag = ptaCreate(n)) == NULL)
-                return ERROR_INT("ptag not made", procName, 1);
+            ptag = ptaCreate(n);
             ptaaAddPta(ptaag, ptag, L_INSERT);
             for (k = 0; k < n; k++) {
                 ptaGetIPt(ptal, k, &x, &y);
@@ -1264,11 +1259,13 @@ PTAA    *ptaal;  /* local chain code */
 
             /* Make a new step numaa, removing any old one */
         ptaal = ccb->local;
-        nb = ptaaGetCount(ptaal);   /* number of borders */
-        if (ccb->step)   /* remove old one */
+        nb = ptaaGetCount(ptaal);  /* number of borders */
+        if (ccb->step)  /* remove old one */
             numaaDestroy(&ccb->step);
-        if ((naa = numaaCreate(nb)) == NULL)
+        if ((naa = numaaCreate(nb)) == NULL) {
+            ccbDestroy(&ccb);
             return ERROR_INT("naa not made", procName, 1);
+        }
         ccb->step = naa;  /* save new one */
 
             /* Iterate through the borders for this c.c. */
@@ -1278,8 +1275,7 @@ PTAA    *ptaal;  /* local chain code */
             if (n == 1) {  /* isolated pixel */
                 na = numaCreate(1);   /* but leave it empty */
             } else {   /* trace out the boundary */
-                if ((na = numaCreate(n)) == NULL)
-                    return ERROR_INT("na not made", procName, 1);
+                na = numaCreate(n);
                 ptaGetIPt(ptal, 0, &px, &py);
                 for (k = 1; k < n; k++) {
                     ptaGetIPt(ptal, k, &cx, &cy);
@@ -1338,12 +1334,16 @@ PTA     *ptas, *ptan;
     ncc = ccbaGetCount(ccba);  /* number of c.c. */
     for (i = 0; i < ncc; i++) {
         ccb = ccbaGetCcb(ccba, i);
-        if ((naa = ccb->step) == NULL)
+        if ((naa = ccb->step) == NULL) {
+            ccbDestroy(&ccb);
             return ERROR_INT("step numaa not found", procName, 1);
-        if ((boxa = ccb->boxa) == NULL)
+        } if ((boxa = ccb->boxa) == NULL) {
+            ccbDestroy(&ccb);
             return ERROR_INT("boxa not found", procName, 1);
-        if ((ptas = ccb->start) == NULL)
+        } if ((ptas = ccb->start) == NULL) {
+            ccbDestroy(&ccb);
             return ERROR_INT("start pta not found", procName, 1);
+        }
 
             /* For global coords, get the (xul, yul) of the c.c.;
              * otherwise, use relative coords. */
@@ -1352,14 +1352,18 @@ PTA     *ptas, *ptan;
             yul = 0;
         } else {  /* coordtype == CCB_GLOBAL_COORDS */
                 /* Get UL corner in global coords */
-            if (boxaGetBoxGeometry(boxa, 0, &xul, &yul, NULL, NULL))
+            if (boxaGetBoxGeometry(boxa, 0, &xul, &yul, NULL, NULL)) {
+                ccbDestroy(&ccb);
                 return ERROR_INT("bounding rectangle not found", procName, 1);
+            }
         }
 
             /* Make a new ptaa, removing any old one */
         nb = numaaGetCount(naa);   /* number of borders */
-        if ((ptaan = ptaaCreate(nb)) == NULL)
+        if ((ptaan = ptaaCreate(nb)) == NULL) {
+            ccbDestroy(&ccb);
             return ERROR_INT("ptaan not made", procName, 1);
+        }
         if (coordtype == CCB_LOCAL_COORDS) {
             if (ccb->local)   /* remove old one */
                 ptaaDestroy(&ccb->local);
@@ -1374,8 +1378,11 @@ PTA     *ptas, *ptan;
         for (j = 0; j < nb; j++) {
             na = numaaGetNuma(naa, j, L_CLONE);
             n = numaGetCount(na);   /* number of steps in border */
-            if ((ptan = ptaCreate(n + 1)) == NULL)
+            if ((ptan = ptaCreate(n + 1)) == NULL) {
+                ccbDestroy(&ccb);
+                numaDestroy(&na);
                 return ERROR_INT("ptan not made", procName, 1);
+            }
             ptaaAddPta(ptaan, ptan, L_INSERT);
             ptaGetIPt(ptas, j, &xstart, &ystart);
             x = xul + xstart;
@@ -1441,16 +1448,20 @@ PTA     *ptal, *ptag;
         ccb = ccbaGetCcb(ccba, i);
 
             /* Get the UL corner in global coords, (xul, yul), of the c.c. */
-        if (boxaGetBoxGeometry(ccb->boxa, 0, &xul, &yul, NULL, NULL))
+        if (boxaGetBoxGeometry(ccb->boxa, 0, &xul, &yul, NULL, NULL)) {
+            ccbDestroy(&ccb);
             return ERROR_INT("bounding rectangle not found", procName, 1);
+        }
 
             /* Make a new spglobal pta, removing any old one */
         ptal = ccb->splocal;
         npt = ptaGetCount(ptal);   /* number of points */
         if (ccb->spglobal)   /* remove old one */
             ptaDestroy(&ccb->spglobal);
-        if ((ptag = ptaCreate(npt)) == NULL)
+        if ((ptag = ptaCreate(npt)) == NULL) {
+            ccbDestroy(&ccb);
             return ERROR_INT("ptag not made", procName, 1);
+        }
         ccb->spglobal = ptag;  /* save new one */
 
             /* Convert local to global */
@@ -1523,7 +1534,7 @@ PTA     *ptal, *ptag;
  *          generate the full single path for all borders in the
  *          c.c.  Starting at the start point on the outer
  *          border, when we hit a line on a cut, we take
- *          the cut, do the hold border, and return on the cut
+ *          the cut, do the hole border, and return on the cut
  *          to the outer border.  We compose a pta of the
  *          outer border pts that are on cut paths, and for
  *          every point on the outer border (as we go around),
@@ -1590,12 +1601,12 @@ PTAA     *ptaap;  /* ptaa for all paths between borders */
 
                 /* Find a short path and store it */
             ptac = getCutPathForHole(ccb->pix, pta, boxinner, &dir, &len);
-            if (len == 0) {  /* bad: we lose the hole! */
+            if (len == 0) {  /* lost the hole */
                 lostholes++;
 /*                boxPrintStreamInfo(stderr, boxa->box[0]); */
             }
             ptaaAddPta(ptaap, ptac, L_INSERT);
-/*            fprintf(stderr, "dir = %d, length = %d\n", dir, len); */
+/*            lept_stderr("dir = %d, length = %d\n", dir, len); */
 /*            ptaWriteStream(stderr, ptac, 1); */
 
                 /* Store the first and last points in the cut path,
@@ -1659,8 +1670,7 @@ PTAA     *ptaap;  /* ptaa for all paths between borders */
     }
 
     if (lostholes > 0)
-        L_WARNING("***** %d lost holes *****\n", procName, lostholes);
-
+        L_INFO("***** %d lost holes *****\n", procName, lostholes);
     return 0;
 }
 
@@ -1686,8 +1696,9 @@ PTAA     *ptaap;  /* ptaa for all paths between borders */
  *          the pix.  This function is cheap-and-dirty, may fail for some
  *          holes in complex topologies such as those you might find in a
  *          moderately dark scanned halftone.  If it fails to find a
- *          path to any particular hole, it gives a warning, and because
- *          that hole path is not included, the hole will not be rendered.
+ *          path to any particular hole, the hole will not be rendered.
+ *          Nevertheless, the image can be perfectly reconstructed
+ *          from the boundary representation.
  * </pre>
  */
 PTA *
@@ -1710,11 +1721,8 @@ PTA      *ptac;
     if (!boxinner)
         return (PTA *)ERROR_PTR("boxinner not defined", procName, NULL);
 
-    w = pixGetWidth(pix);
-    h = pixGetHeight(pix);
-
-    if ((ptac = ptaCreate(4)) == NULL)
-        return (PTA *)ERROR_PTR("ptac not made", procName, NULL);
+    pixGetDimensions(pix, &w, &h, NULL);
+    ptac = ptaCreate(4);
     xmid = boxinner->x + boxinner->w / 2;
     ymid = boxinner->y + boxinner->h / 2;
 
@@ -1813,9 +1821,8 @@ PTA      *ptac;
         return ptac;
     }
 
-        /* If we get here, we've failed! */
+        /* Sometimes, there is nothing. */
     ptaEmpty(ptac);
-    L_WARNING("no path found\n", procName);
     *plen = 0;
     return ptac;
 }
@@ -1859,6 +1866,7 @@ PTA     *pta;
         ccb = ccbaGetCcb(ccba, i);
         if ((ptaa = ccb->global) == NULL) {
             L_WARNING("global pixel loc array not found", procName);
+            ccbDestroy(&ccb);
             continue;
         }
         nb = ptaaGetCount(ptaa);   /* number of borders in the c.c.  */
@@ -1911,6 +1919,7 @@ PTA     *ptag;
         ccb = ccbaGetCcb(ccba, i);
         if ((ptag = ccb->spglobal) == NULL) {
             L_WARNING("spglobal pixel loc array not found\n", procName);
+            ccbDestroy(&ccb);
             continue;
         }
         npt = ptaGetCount(ptag);   /* number of pixels on path */
@@ -2005,12 +2014,14 @@ PTA     *pta;
         ccb = ccbaGetCcb(ccba, i);
         if ((boxa = ccb->boxa) == NULL) {
             pixDestroy(&pixd);
+            ccbDestroy(&ccb);
             return (PIX *)ERROR_PTR("boxa not found", procName, NULL);
         }
 
             /* Render border in pixt */
         if ((ptaa = ccb->local) == NULL) {
             L_WARNING("local chain array not found\n", procName);
+            ccbDestroy(&ccb);
             continue;
         }
 
@@ -2018,6 +2029,7 @@ PTA     *pta;
         for (j = 0; j < nb; j++) {
             if ((box = boxaGetBox(boxa, j, L_CLONE)) == NULL) {
                 pixDestroy(&pixd);
+                ccbDestroy(&ccb);
                 return (PIX *)ERROR_PTR("b. box not found", procName, NULL);
             }
             if (j == 0) {
@@ -2034,6 +2046,7 @@ PTA     *pta;
                  * we need it relative to just the hole border. */
             if ((pixt = pixCreate(w, h, 1)) == NULL) {
                 pixDestroy(&pixd);
+                ccbDestroy(&ccb);
                 return (PIX *)ERROR_PTR("pixt not made", procName, NULL);
             }
             pta = ptaaGetPta(ptaa, j, L_CLONE);
@@ -2059,6 +2072,7 @@ PTA     *pta;
                 if ((pixh = pixFillClosedBorders(pixt, 4)) == NULL) {
                     pixDestroy(&pixd);
                     pixDestroy(&pixt);
+                    ccbDestroy(&ccb);
                     return (PIX *)ERROR_PTR("pixh not made", procName, NULL);
                 }
             } else {   /* fill the hole from inside */
@@ -2194,7 +2208,6 @@ PTA     *pta;
 }
 
 
-
 /*---------------------------------------------------------------------*
  *                            Serialize for I/O                        *
  *---------------------------------------------------------------------*/
@@ -2299,6 +2312,7 @@ PTA        *pta;
         ccb = ccbaGetCcb(ccba, i);
         if (boxaGetBoxGeometry(ccb->boxa, 0, &bx, &by, &bw, &bh)) {
             bbufferDestroy(&bbuf);
+            ccbDestroy(&ccb);
             return ERROR_INT("bounding box not found", procName, 1);
         }
         bbufferRead(bbuf, (l_uint8 *)&bx, 4);  /* ulx of c.c. */
@@ -2445,7 +2459,7 @@ NUMAA    *step;
         return (CCBORDA *)ERROR_PTR("file not type ccba", procName, NULL);
     }
     sscanf(strbuf, "ccba: %7d cc\n", &ncc);
-/*    fprintf(stderr, "ncc = %d\n", ncc); */
+/*    lept_stderr("ncc = %d\n", ncc); */
     if ((ccba = ccbaCreate(NULL, ncc)) == NULL) {
         LEPT_FREE(dataout);
         return (CCBORDA *)ERROR_PTR("ccba not made", procName, NULL);
@@ -2457,7 +2471,7 @@ NUMAA    *step;
     offset += 4;
     ccba->w = width;
     ccba->h = height;
-/*    fprintf(stderr, "width = %d, height = %d\n", width, height); */
+/*    lept_stderr("width = %d, height = %d\n", width, height); */
 
     for (i = 0; i < ncc; i++) {  /* should be ncc */
         ccb = ccbCreate(NULL);
@@ -2473,12 +2487,12 @@ NUMAA    *step;
         offset += 4;
         box = boxCreate(xoff, yoff, w, h);
         boxaAddBox(ccb->boxa, box, L_INSERT);
-/*        fprintf(stderr, "xoff = %d, yoff = %d, w = %d, h = %d\n",
+/*        lept_stderr("xoff = %d, yoff = %d, w = %d, h = %d\n",
                 xoff, yoff, w, h); */
 
         memcpy(&nb, dataout + offset, 4);
         offset += 4;
-/*        fprintf(stderr, "num borders = %d\n", nb); */
+/*        lept_stderr("num borders = %d\n", nb); */
         step = numaaCreate(nb);
         ccb->step = step;
 
@@ -2488,7 +2502,7 @@ NUMAA    *step;
             memcpy(&starty, dataout + offset, 4);
             offset += 4;
             ptaAddPt(ccb->start, startx, starty);
-/*            fprintf(stderr, "startx = %d, starty = %d\n", startx, starty); */
+/*            lept_stderr("startx = %d, starty = %d\n", startx, starty); */
             na = numaCreate(0);
             numaaAddNuma(step, na, L_INSERT);
 
@@ -2538,7 +2552,7 @@ char  *svgstr;
     if (!ccba)
         return ERROR_INT("ccba not defined", procName, 1);
 
-    if ((svgstr = ccbaWriteSVGString(filename, ccba)) == NULL)
+    if ((svgstr = ccbaWriteSVGString(ccba)) == NULL)
         return ERROR_INT("svgstr not made", procName, 1);
 
     l_binaryWrite(filename, "w", svgstr, strlen(svgstr));
@@ -2551,14 +2565,12 @@ char  *svgstr;
 /*!
  * \brief   ccbaWriteSVGString()
  *
- * \param[in]    filename
  * \param[in]    ccba
  * \return  string in svg-formatted, that can be written to file,
  *              or NULL on error.
  */
 char  *
-ccbaWriteSVGString(const char  *filename,
-                   CCBORDA     *ccba)
+ccbaWriteSVGString(CCBORDA *ccba)
 {
 char    *svgstr;
 char     smallbuf[256];
@@ -2576,8 +2588,6 @@ SARRAY  *sa;
 
     PROCNAME("ccbaWriteSVGString");
 
-    if (!filename)
-        return (char *)ERROR_PTR("filename not defined", procName, NULL);
     if (!ccba)
         return (char *)ERROR_PTR("ccba not defined", procName, NULL);
 
@@ -2610,7 +2620,7 @@ SARRAY  *sa;
     sarrayAddString(sa, space, L_COPY);
 
     svgstr = sarrayToString(sa, 1);
-/*    fprintf(stderr, "%s", svgstr); */
+/*    lept_stderr("%s", svgstr); */
 
     sarrayDestroy(&sa);
     return svgstr;

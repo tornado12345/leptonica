@@ -64,14 +64,19 @@
  * </pre>
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include <string.h>
 #include "allheaders.h"
 
-static const l_int32  INITIAL_ARRAYSIZE = 200;   /* n'import quoi */
+    /* Bounds on array size */
+static const l_uint32  MaxArraySize = 1000000000;   /* 10^9 bytes */
+static const l_int32   InitialArraySize = 200;      /*!< n'importe quoi */
 
     /* Static function */
 static l_int32 l_byteaExtendArrayToSize(L_BYTEA *ba, size_t size);
-
 
 /*---------------------------------------------------------------------*
  *                  Creation, copy, clone, destruction                 *
@@ -95,9 +100,8 @@ L_BYTEA  *ba;
 
     PROCNAME("l_byteaCreate");
 
-    if (nbytes <= 0)
-        nbytes = INITIAL_ARRAYSIZE;
-
+    if (nbytes <= 0 || nbytes > MaxArraySize)
+        nbytes = InitialArraySize;
     ba = (L_BYTEA *)LEPT_CALLOC(1, sizeof(L_BYTEA));
     ba->data = (l_uint8 *)LEPT_CALLOC(nbytes + 1, sizeof(l_uint8));
     if (!ba->data) {
@@ -129,6 +133,8 @@ L_BYTEA  *ba;
         return (L_BYTEA *)ERROR_PTR("data not defined", procName, NULL);
     if (size <= 0)
         return (L_BYTEA *)ERROR_PTR("no bytes to initialize", procName, NULL);
+    if (size > MaxArraySize)
+        return (L_BYTEA *)ERROR_PTR("size is too big", procName, NULL);
 
     if ((ba = l_byteaCreate(size)) == NULL)
         return (L_BYTEA *)ERROR_PTR("ba not made", procName, NULL);
@@ -261,9 +267,7 @@ L_BYTEA  *ba;
         if (ba->data) LEPT_FREE(ba->data);
         LEPT_FREE(ba);
     }
-
     *pba = NULL;
-    return;
 }
 
 
@@ -375,8 +379,10 @@ size_t  size, nalloc, reqsize;
     size = l_byteaGetSize(ba);
     reqsize = size + newbytes + 1;
     nalloc = ba->nalloc;
-    if (nalloc < reqsize)
-        l_byteaExtendArrayToSize(ba, 2 * reqsize);
+    if (nalloc < reqsize) {
+        if (l_byteaExtendArrayToSize(ba, 2 * reqsize))
+            return ERROR_INT("extension failed", procName, 1);
+    }
 
     memcpy(ba->data + size, newdata, newbytes);
     ba->size += newbytes;
@@ -408,8 +414,10 @@ size_t  size, len, nalloc, reqsize;
     len = strlen(str);
     reqsize = size + len + 1;
     nalloc = ba->nalloc;
-    if (nalloc < reqsize)
-        l_byteaExtendArrayToSize(ba, 2 * reqsize);
+    if (nalloc < reqsize) {
+        if (l_byteaExtendArrayToSize(ba, 2 * reqsize))
+            return ERROR_INT("extension failed", procName, 1);
+    }
 
     memcpy(ba->data + size, str, len);
     ba->size += len;
@@ -423,6 +431,12 @@ size_t  size, len, nalloc, reqsize;
  * \param[in]    ba
  * \param[in]    size    new size of lba data array
  * \return  0 if OK; 1 on error
+ *
+ * <pre>
+ * Notes:
+ *      (1) If necessary, reallocs the byte array to %size.
+ *      (2) The max buffer size is 1 GB.
+ * </pre>
  */
 static l_int32
 l_byteaExtendArrayToSize(L_BYTEA  *ba,
@@ -432,14 +446,19 @@ l_byteaExtendArrayToSize(L_BYTEA  *ba,
 
     if (!ba)
         return ERROR_INT("ba not defined", procName, 1);
-
-    if (size > ba->nalloc) {
-        if ((ba->data =
-            (l_uint8 *)reallocNew((void **)&ba->data, ba->nalloc, size))
-                 == NULL)
-            return ERROR_INT("new array not returned", procName, 1);
-        ba->nalloc = size;
+    if (ba->nalloc > MaxArraySize)  /* belt & suspenders */
+        return ERROR_INT("ba has too many ptrs", procName, 1);
+    if (size > MaxArraySize)
+        return ERROR_INT("size > 1 GB; too large", procName, 1);
+    if (size <= ba->nalloc) {
+        L_INFO("size too small; no extension\n", procName);
+        return 0;
     }
+
+    if ((ba->data =
+        (l_uint8 *)reallocNew((void **)&ba->data, ba->nalloc, size)) == NULL)
+        return ERROR_INT("new array not returned", procName, 1);
+    ba->nalloc = size;
     return 0;
 }
 

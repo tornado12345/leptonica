@@ -30,6 +30,10 @@
  *   Tests sudoku solver and generator.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config_auto.h>
+#endif  /* HAVE_CONFIG_H */
+
 #include "allheaders.h"
 
 static const char *startsol = "3 8 7 2 6 4 1 9 5 "
@@ -71,16 +75,16 @@ static char  mainName[] = "sudokutest";
     sudokuOutput(sud, L_SUDOKU_INIT);
     startTimer();
     sudokuSolve(sud);
-    fprintf(stderr, "Time: %7.3f sec\n", stopTimer());
+    lept_stderr("Time: %7.3f sec\n", stopTimer());
     sudokuOutput(sud, L_SUDOKU_STATE);
     sudokuDestroy(&sud);
 
         /* Test for uniqueness */
     sudokuTestUniqueness(array, &unique);
     if (unique)
-        fprintf(stderr, "Sudoku is unique\n");
+        lept_stderr("Sudoku is unique\n");
     else
-        fprintf(stderr, "Sudoku is NOT unique\n");
+        lept_stderr("Sudoku is NOT unique\n");
     lept_free(array);
 
     return 0;
